@@ -1,10 +1,10 @@
 package org.eol.globi.taxon;
 
+import org.apache.commons.io.FileExistsException;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.StopWatch;
 import org.apache.commons.lang3.tuple.Triple;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.lucene.store.SimpleFSDirectory;
 import org.eol.globi.domain.NameType;
 import org.eol.globi.domain.PropertyAndValueDictionary;
@@ -22,6 +22,8 @@ import org.mapdb.BTreeMap;
 import org.mapdb.DB;
 import org.mapdb.Engine;
 import org.mapdb.Fun;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -32,16 +34,17 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class TaxonCacheService extends CacheService implements PropertyEnricher, TermMatcher {
-    private static final Log LOG = LogFactory.getLog(TaxonCacheService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TaxonCacheService.class);
 
     private BTreeMap<String, Map<String, String>> resolvedIdToTaxonMap = null;
 
-    private TaxonLookupService taxonLookupService = null;
+    private TaxonLookupServiceImpl taxonLookupService = null;
 
 
     // maximum number of expected taxon links related to a given taxon id
@@ -140,46 +143,57 @@ public class TaxonCacheService extends CacheService implements PropertyEnricher,
     private void initTaxonIdMap() throws PropertyEnricherException {
         try {
             File luceneDir = new File(getCacheDir().getAbsolutePath(), "lucene");
-            boolean preexisting = luceneDir.exists();
-            CacheServiceUtil.createCacheDir(luceneDir);
-            TaxonLookupServiceImpl taxonLookupService = new TaxonLookupServiceImpl(new SimpleFSDirectory(luceneDir)) {{
-                setMaxHits(getMaxTaxonLinks());
-                start();
-            }};
-            if (!preexisting) {
-                final AtomicInteger count = new AtomicInteger(0);
-                LOG.info("local taxon map of [" + taxonMap.getResource() + "] building...");
-
-                StopWatch watch = new StopWatch();
-                watch.start();
-                BufferedReader reader = CacheServiceUtil.createBufferedReader(taxonMap.getResource());
-
-                reader.lines()
-                        .filter(taxonMap.getValidator())
-                        .map(taxonMap.getParser())
-                        .forEach(triple -> {
-                            addIfNeeded(taxonLookupService, triple.getLeft().getExternalId(), triple.getRight().getExternalId());
-                            addIfNeeded(taxonLookupService, triple.getLeft().getName(), triple.getRight().getExternalId());
-                            addIfNeeded(taxonLookupService, triple.getRight().getExternalId(), triple.getRight().getExternalId());
-                            addIfNeeded(taxonLookupService, triple.getRight().getName(), triple.getRight().getExternalId());
-                            count.incrementAndGet();
-                        });
-                watch.stop();
-                logCacheLoadStats(watch.getTime(), count.get());
-                LOG.info("local taxon map of [" + taxonMap.getResource() + "] built.");
-                watch.reset();
+            if (!luceneDir.exists()) {
+                buildIndex(luceneDir);
             }
-            taxonLookupService.finish();
-            this.taxonLookupService = taxonLookupService;
+            this.taxonLookupService = new TaxonLookupServiceImpl(new SimpleFSDirectory(luceneDir)) {{
+                setMaxHits(getMaxTaxonLinks());
+            }};
 
         } catch (IOException e) {
             throw new PropertyEnricherException("problem initiating taxon cache index", e);
         }
     }
 
+    private void buildIndex(File luceneDir) throws PropertyEnricherException, IOException {
+        File tmpLuceneDir = new File(getCacheDir().getAbsolutePath(), "lucene" + UUID.randomUUID());
+        CacheServiceUtil.createCacheDir(tmpLuceneDir);
+        SimpleFSDirectory indexDir = new SimpleFSDirectory(tmpLuceneDir);
+        TaxonLookupBuilder taxonLookupService = new TaxonLookupBuilder(indexDir) {{
+            start();
+        }};
+        final AtomicInteger count = new AtomicInteger(0);
+        LOG.info("local taxon map of [" + taxonMap.getResource() + "] building...");
+
+        StopWatch watch = new StopWatch();
+        watch.start();
+        BufferedReader reader = CacheServiceUtil.createBufferedReader(taxonMap.getResource());
+
+        reader.lines()
+                .filter(taxonMap.getValidator())
+                .map(taxonMap.getParser())
+                .forEach(triple -> {
+                    addIfNeeded(taxonLookupService, triple.getLeft().getExternalId(), triple.getRight().getExternalId());
+                    addIfNeeded(taxonLookupService, triple.getLeft().getName(), triple.getRight().getExternalId());
+                    addIfNeeded(taxonLookupService, triple.getRight().getExternalId(), triple.getRight().getExternalId());
+                    addIfNeeded(taxonLookupService, triple.getRight().getName(), triple.getRight().getExternalId());
+                    count.incrementAndGet();
+                });
+        watch.stop();
+        logCacheLoadStats(watch.getTime(), count.get());
+        LOG.info("local taxon map of [" + taxonMap.getResource() + "] built.");
+        watch.reset();
+        taxonLookupService.finish();
+        try {
+            FileUtils.moveDirectory(tmpLuceneDir, luceneDir);
+        } catch (FileExistsException ex) {
+            LOG.info("failed to move recently built index at [" + tmpLuceneDir.getAbsolutePath() + "] to [" + luceneDir.getAbsolutePath() + "]. Assuming that some other builder has already created the index.");
+            FileUtils.deleteDirectory(tmpLuceneDir);
+        }
+    }
+
     private void initTaxonCache() throws PropertyEnricherException {
         DB db = initDb("taxonCache");
-
         String taxonCacheName = "taxonCacheById";
         if (db.exists(taxonCacheName)) {
             resolvedIdToTaxonMap = db.getTreeMap(taxonCacheName);
@@ -187,24 +201,31 @@ public class TaxonCacheService extends CacheService implements PropertyEnricher,
             LOG.info("local taxon cache of [" + taxonCache.getResource() + "] building...");
             StopWatch watch = new StopWatch();
             watch.start();
-
+            String tmpTaxonCacheName = "taxonCacheById" + UUID.randomUUID();
+            BTreeMap<String, Map<String, String>> tmpResolvedIdToTaxonMap = null;
             try {
-                resolvedIdToTaxonMap = db
-                        .createTreeMap(taxonCacheName)
+                tmpResolvedIdToTaxonMap = db
+                        .createTreeMap(tmpTaxonCacheName)
                         .pumpPresort(100000)
                         .pumpIgnoreDuplicates()
                         .pumpSource(taxonCacheIterator(taxonCache))
                         .keySerializer(BTreeKeySerializer.STRING)
                         .make();
                 db.commit();
-
             } catch (IOException e) {
                 throw new PropertyEnricherException("failed to instantiate taxonCache: [" + e.getMessage() + "]", e);
             }
             watch.stop();
-            logCacheLoadStats(watch.getTime(), resolvedIdToTaxonMap.size());
-            LOG.info("local taxon cache of [" + taxonCache.getResource() + "] built.");
+            logCacheLoadStats(watch.getTime(), tmpResolvedIdToTaxonMap.size());
             watch.reset();
+            if (db.exists(taxonCacheName)) {
+                LOG.info("another local taxon cache of [" + taxonCache.getResource() + "] was created during index creation, dropping built index.");
+                db.delete(tmpTaxonCacheName);
+            } else {
+                resolvedIdToTaxonMap = tmpResolvedIdToTaxonMap;
+                db.rename(tmpTaxonCacheName, taxonCacheName);
+                LOG.info("local taxon cache of [" + taxonCache.getResource() + "] built.");
+            }
         }
     }
 
@@ -308,7 +329,7 @@ public class TaxonCacheService extends CacheService implements PropertyEnricher,
         logCacheLoadStats(time, numberOfItems, LOG);
     }
 
-    public static void logCacheLoadStats(long time, int numberOfItems, Log log) {
+    public static void logCacheLoadStats(long time, int numberOfItems, Logger log) {
         final double avgRate = numberOfItems * 1000.0 / time;
         final double timeElapsedInSeconds = time / 1000.0;
         final String msg = String.format("cache with [%d]" + " items built in [%.1f] s or [%.1f] items/s.",
@@ -325,7 +346,11 @@ public class TaxonCacheService extends CacheService implements PropertyEnricher,
             resolvedIdToTaxonMap = null;
         }
         if (taxonLookupService != null) {
-            taxonLookupService.destroy();
+            try {
+                taxonLookupService.close();
+            } catch (IOException e) {
+                // ignore
+            }
             taxonLookupService = null;
         }
     }

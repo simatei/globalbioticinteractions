@@ -6,6 +6,7 @@ import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.TaxonomyProvider;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.util.JSONUtil;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
@@ -233,7 +234,7 @@ public class DatasetImporterForDBatVir extends DatasetImporterWithListener {
                 link.put(INTERACTION_TYPE_ID, InteractType.HOST_OF.getIRI());
                 link.put(INTERACTION_TYPE_NAME, InteractType.HOST_OF.getLabel());
 
-                interactionListener.newLink(link);
+                interactionListener.on(link);
             }
         }
     }

@@ -1,6 +1,5 @@
 package org.eol.globi.service;
 
-import org.apache.commons.lang3.builder.ToStringExclude;
 import org.eol.globi.domain.PropertyAndValueDictionary;
 import org.eol.globi.domain.Taxon;
 import org.eol.globi.domain.TaxonImage;
@@ -8,16 +7,18 @@ import org.eol.globi.domain.TaxonImpl;
 import org.eol.globi.domain.TermImpl;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.collection.IsMapContaining.hasEntry;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertFalse;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 public class TaxonUtilTest {
@@ -35,6 +36,41 @@ public class TaxonUtilTest {
         otherTaxon.setExternalId("some:otherid");
         otherTaxon.setPath("Mammalia|Mesonychidae|Lestes");
         otherTaxon.setPathNames("class|family|genus");
+
+        assertTrue(TaxonUtil.likelyHomonym(taxon, otherTaxon));
+    }
+
+    @Test
+    public void anotherHomonym() {
+        TaxonImpl taxon = new TaxonImpl();
+
+        taxon.setName("Hymenolepis");
+        taxon.setExternalId("some:id");
+        taxon.setPath("Plantae | Tracheophyta | Magnoliopsida | Asterales | Asteraceae | Hymenolepis");
+        taxon.setPathNames("kingdom | phylum | class | order | family | genus");
+
+        TaxonImpl otherTaxon = new TaxonImpl();
+        otherTaxon.setName("Hymenolepis");
+        otherTaxon.setExternalId("some:otherid");
+        otherTaxon.setPath("Animalia | Platyhelminthes | Cestoda | Cyclophyllidea | Hymenolepididae | Hymenolepis");
+        otherTaxon.setPathNames("kingdom | phylum | class | order | family | genus");
+
+        assertTrue(TaxonUtil.likelyHomonym(taxon, otherTaxon));
+    }
+
+    @Test
+    public void homonymVenturia() {
+        TaxonImpl taxon = new TaxonImpl();
+        taxon.setName("Venturia");
+        taxon.setExternalId("some:id");
+        taxon.setPath("Ichneumonidae|Venturia");
+        taxon.setPathNames("family|genus");
+
+        TaxonImpl otherTaxon = new TaxonImpl();
+        otherTaxon.setName("Venturia");
+        otherTaxon.setExternalId("some:otherid");
+        otherTaxon.setPath("Fungi | Ascomycota | Dothideomycetes | Venturiales | Venturiaceae | Venturia");
+        otherTaxon.setPathNames("kingdom | phylum | class | order | family | genus");
 
         assertTrue(TaxonUtil.likelyHomonym(taxon, otherTaxon));
     }
@@ -269,7 +305,7 @@ public class TaxonUtilTest {
 
     @Test
     public void nonOverlapping2() {
-        final TaxonImpl taxonA = new TaxonImpl("name","id");
+        final TaxonImpl taxonA = new TaxonImpl("name", "id");
         taxonA.setPath("");
         final TaxonImpl taxonB = new TaxonImpl("otherName", "id");
         taxonB.setPath("three | four");
@@ -280,7 +316,7 @@ public class TaxonUtilTest {
 
     @Test
     public void nonOverlapping3() {
-        final TaxonImpl taxonA = new TaxonImpl("name","id");
+        final TaxonImpl taxonA = new TaxonImpl("name", "id");
         taxonA.setPath("");
         final TaxonImpl taxonB = new TaxonImpl("otherName", "id");
         taxonB.setPath("");
@@ -291,7 +327,7 @@ public class TaxonUtilTest {
 
     @Test
     public void nonOverlapping() {
-        final TaxonImpl taxonA = new TaxonImpl("name","id");
+        final TaxonImpl taxonA = new TaxonImpl("name", "id");
         taxonA.setPath("one | two");
         final TaxonImpl taxonB = new TaxonImpl("otherName", "id");
         taxonB.setPath("three | four");
@@ -317,7 +353,7 @@ public class TaxonUtilTest {
 
     @Test
     public void overlapping2() {
-        final TaxonImpl taxonA = new TaxonImpl("name","id");
+        final TaxonImpl taxonA = new TaxonImpl("name", "id");
         taxonA.setPath("one | two | three");
         final TaxonImpl taxonB = new TaxonImpl("otherName", "id");
         taxonB.setPath("one | two");
@@ -328,6 +364,301 @@ public class TaxonUtilTest {
 
         assertThat(taxons.size(), is(2));
         assertThat(taxons.get(0).getPath(), is("one | two"));
+    }
+
+
+    @Test
+    public void mapToTaxon() {
+        Map<String, String> taxonMap = new TreeMap<String, String>() {{
+            put("sourceTaxonClassName", "Mammalia");
+            put("sourceTaxonFamilyName", "Bovidae");
+            put("sourceTaxonGenusName", "Bos");
+            put("sourceTaxonOrderName", "Artiodactyla");
+            put("sourceTaxonPhylumName", "Chordata");
+            put("sourceTaxonSpeciesName", "Bos taurus");
+            put("sourceTaxonSpecificEpithetName", null);
+            put("sourceTaxonSubfamilyName", "Bovinae");
+
+        }};
+
+        assertThat(TaxonUtil.generateSourceTaxonName(taxonMap), is("Bos taurus"));
+        assertThat(TaxonUtil.generateSourceTaxonPath(taxonMap), is("Chordata | Mammalia | Artiodactyla | Bovidae | Bovinae | Bos | Bos taurus"));
+        assertThat(TaxonUtil.generateSourceTaxonPathNames(taxonMap), is("phylum | class | order | family | subfamily | genus | species"));
+    }
+
+    @Test
+    public void generateSourceTaxon() throws IOException {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.SOURCE_TAXON_CLASS, "class");
+            }
+        };
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("class"));
+        properties.put(TaxonUtil.SOURCE_TAXON_ORDER, "order");
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("order"));
+        properties.put(TaxonUtil.SOURCE_TAXON_FAMILY, "family");
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("family"));
+        properties.put(TaxonUtil.SOURCE_TAXON_GENUS, "genus");
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("genus"));
+        properties.put(TaxonUtil.SOURCE_TAXON_SPECIFIC_EPITHET, "species");
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("genus species"));
+        properties.put(TaxonUtil.SOURCE_TAXON_SUBSPECIFIC_EPITHET, "subspecies");
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("genus species subspecies"));
+    }
+
+    @Test
+    public void generateTargetTaxon() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.TARGET_TAXON_CLASS, "class");
+            }
+        };
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("class"));
+        properties.put(TaxonUtil.TARGET_TAXON_ORDER, "order");
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("order"));
+        properties.put(TaxonUtil.TARGET_TAXON_FAMILY, "family");
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("family"));
+        properties.put(TaxonUtil.TARGET_TAXON_GENUS, "genus");
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("genus"));
+        properties.put(TaxonUtil.TARGET_TAXON_SPECIFIC_EPITHET, "species");
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("genus species"));
+        properties.put(TaxonUtil.TARGET_TAXON_SUBSPECIFIC_EPITHET, "subspecies");
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("genus species subspecies"));
+    }
+
+    @Test
+    public void generateTargetTaxonIgnoreEmptyGenus() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.TARGET_TAXON_GENUS, "");
+                put(TaxonUtil.TARGET_TAXON_CLASS, "class");
+            }
+        };
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("class"));
+    }
+
+    @Test
+    public void generateTargetTaxonPath() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.TARGET_TAXON_GENUS, "genusValue");
+                put(TaxonUtil.TARGET_TAXON_CLASS, "classValue");
+            }
+        };
+        assertThat(TaxonUtil.generateTargetTaxonPath(properties), is("classValue | genusValue"));
+        assertThat(TaxonUtil.generateTargetTaxonPathNames(properties), is("class | genus"));
+    }
+
+    @Test
+    public void generateSourceTaxonPath() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.SOURCE_TAXON_GENUS, "aGenus");
+                put(TaxonUtil.SOURCE_TAXON_CLASS, "aClass");
+            }
+        };
+        assertThat(TaxonUtil.generateSourceTaxonPath(properties), is("aClass | aGenus"));
+        assertThat(TaxonUtil.generateSourceTaxonPathNames(properties), is("class | genus"));
+    }
+
+    @Test
+    public void generateSourceTaxonPathWithSpecificEpithet() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.SOURCE_TAXON_SPECIFIC_EPITHET, "some epithet");
+                put(TaxonUtil.SOURCE_TAXON_GENUS, "aGenus");
+                put(TaxonUtil.SOURCE_TAXON_CLASS, "aClass");
+            }
+        };
+        assertThat(TaxonUtil.generateSourceTaxonPath(properties), is("aClass | aGenus | aGenus some epithet"));
+        assertThat(TaxonUtil.generateSourceTaxonPathNames(properties), is("class | genus | species"));
+    }
+
+    @Test
+    public void generateTargetTaxonPathWithSpecificEpithet() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.TARGET_TAXON_SPECIFIC_EPITHET, "some epithet");
+                put(TaxonUtil.TARGET_TAXON_SPECIES, "some species");
+                put(TaxonUtil.TARGET_TAXON_GENUS, "aGenus");
+                put(TaxonUtil.TARGET_TAXON_CLASS, "aClass");
+            }
+        };
+        assertThat(TaxonUtil.generateTargetTaxonPath(properties), is("aClass | aGenus | aGenus some epithet"));
+        assertThat(TaxonUtil.generateTargetTaxonPathNames(properties), is("class | genus | species"));
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("aGenus some epithet"));
+    }
+
+    @Test
+    public void generateSourceTaxonPathWithSpecies() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.SOURCE_TAXON_SPECIES, "some species");
+                put(TaxonUtil.SOURCE_TAXON_GENUS, "aGenus");
+                put(TaxonUtil.SOURCE_TAXON_CLASS, "aClass");
+            }
+        };
+        assertThat(TaxonUtil.generateSourceTaxonPath(properties), is("aClass | aGenus | some species"));
+        assertThat(TaxonUtil.generateSourceTaxonPathNames(properties), is("class | genus | species"));
+        assertThat(TaxonUtil.generateSourceTaxonName(properties), is("some species"));
+    }
+
+    @Test
+    public void generateTargetTaxonPathWithSpecies() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.TARGET_TAXON_SPECIES, "some species");
+                put(TaxonUtil.TARGET_TAXON_GENUS, "aGenus");
+                put(TaxonUtil.TARGET_TAXON_CLASS, "aClass");
+            }
+        };
+        assertThat(TaxonUtil.generateTargetTaxonPath(properties), is("aClass | aGenus | some species"));
+        assertThat(TaxonUtil.generateTargetTaxonPathNames(properties), is("class | genus | species"));
+        assertThat(TaxonUtil.generateTargetTaxonName(properties), is("some species"));
+    }
+
+    @Test
+    public void generateSpeciesName() {
+        final HashMap<String, String> properties = new HashMap<String, String>() {
+            {
+                put(TaxonUtil.SOURCE_TAXON_GENUS, "aGenus");
+                put(TaxonUtil.SOURCE_TAXON_CLASS, "aClass");
+            }
+        };
+        assertThat(TaxonUtil.generateSpeciesName(properties,
+                TaxonUtil.SOURCE_TAXON_GENUS,
+                TaxonUtil.SOURCE_TAXON_SPECIFIC_EPITHET,
+                TaxonUtil.SOURCE_TAXON_SUBSPECIFIC_EPITHET,
+                TaxonUtil.SOURCE_TAXON_SPECIES), is(nullValue()));
+    }
+
+    @Test
+    public void enrichTaxonNames2() {
+        HashMap<String, String> properties = new HashMap<String, String>() {{
+            put("sourceTaxonGenus", "some_genus");
+        }};
+        Map<String, String> enriched = TaxonUtil.enrichTaxonNames(properties);
+
+        assertThat(enriched.get("sourceTaxonGenus"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonGenusName"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonName"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonPath"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonPathNames"), is("genus"));
+    }
+
+    @Test
+    public void enrichTaxonNamesCommonName() {
+        HashMap<String, String> properties = new HashMap<String, String>() {{
+            put("sourceTaxonCommonName", "some_common_name");
+        }};
+        Map<String, String> enriched = TaxonUtil.enrichTaxonNames(properties);
+
+        assertThat(enriched.get("sourceTaxonCommonName"), is("some_common_name"));
+        assertThat(enriched.get("sourceTaxonName"), is("some_common_name"));
+        assertThat(enriched.get("sourceTaxonPath"), is("some_common_name"));
+    }
+
+    @Test
+    public void notEnrichTaxonNamesCommonNameIfOtherNamesArePresent() {
+        HashMap<String, String> properties = new HashMap<String, String>() {{
+            put("sourceTaxonCommonName", "some_common_name");
+            put("sourceTaxonSpecies", "some_species_name");
+        }};
+        Map<String, String> enriched = TaxonUtil.enrichTaxonNames(properties);
+
+        assertThat(enriched.get("sourceTaxonCommonName"), is("some_common_name"));
+        assertThat(enriched.get("sourceTaxonName"), is("some_species_name"));
+        assertThat(enriched.get("sourceTaxonPath"), is("some_species_name"));
+    }
+
+    @Test
+    public void enrichTaxonNamesCommonNameShort() {
+        HashMap<String, String> properties = new HashMap<String, String>() {{
+            put("sourceCommonName", "some_common_name");
+        }};
+        Map<String, String> enriched = TaxonUtil.enrichTaxonNames(properties);
+
+        assertThat(enriched.get("sourceTaxonCommonName"), is("some_common_name"));
+        assertThat(enriched.get("sourceCommonName"), is("some_common_name"));
+        assertThat(enriched.get("sourceTaxonName"), is("some_common_name"));
+        assertThat(enriched.get("sourceTaxonPath"), is("some_common_name"));
+    }
+
+    @Test
+    public void enrichTaxonNames3() {
+        HashMap<String, String> properties = new HashMap<String, String>() {{
+            put("sourceGenus", "some_genus");
+        }};
+        Map<String, String> enriched = TaxonUtil.enrichTaxonNames(properties);
+
+        assertThat(enriched.get("sourceTaxonGenusName"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonName"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonPath"), is("some_genus"));
+        assertThat(enriched.get("sourceTaxonPathNames"), is("genus"));
+    }
+
+
+    @Test
+    public void enrichTaxonNames() {
+        HashMap<String, String> properties = new HashMap<String, String>() {{
+            put("targetFamilyName", "some_family");
+            put("targetOrderName", "some_order");
+            put("targetGenusName", null);
+            put("targetTaxonName", null);
+        }};
+        Map<String, String> enriched = TaxonUtil.enrichTaxonNames(properties);
+
+        assertThat(enriched.get("targetOrderName"), is("some_order"));
+        assertThat(enriched.get("targetFamilyName"), is("some_family"));
+
+        assertThat(enriched.get("targetTaxonOrderName"), is("some_order"));
+        assertThat(enriched.get("targetTaxonFamilyName"), is("some_family"));
+
+        assertThat(enriched.get("targetTaxonPath"), is("some_order | some_family"));
+        assertThat(enriched.get("targetTaxonPathNames"), is("order | family"));
+
+        assertThat(enriched.get("targetTaxonName"), is("some_family"));
+    }
+
+
+    @Test
+    public void labelSynonymOf1() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceGenusId"), is("sourceTaxonGenusId"));
+    }
+
+    @Test
+    public void labelSynonymOfKingdomId() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceKingdomId"), is("sourceTaxonKingdomId"));
+    }
+
+    @Test
+    public void labelSynonymOfKingdomName() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceKingdomName"), is("sourceTaxonKingdomName"));
+    }
+
+    @Test
+    public void labelSynonymOf2() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceTaxonGenusId"), is("sourceTaxonGenusId"));
+    }
+
+    @Test
+    public void labelSynonymOf3() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceGenus"), is("sourceTaxonGenusName"));
+    }
+
+    @Test
+    public void labelSynonymOf4() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceGenusName"), is("sourceTaxonGenusName"));
+    }
+
+    @Test
+    public void labelSynonymOf5() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceTaxonGenus"), is("sourceTaxonGenusName"));
+    }
+
+    @Test
+    public void labelSynonymOfSpecies() {
+        assertThat(TaxonUtil.expandTaxonColumnNameIfNeeded("sourceTaxonSpecies"), is("sourceTaxonSpeciesName"));
     }
 
 }

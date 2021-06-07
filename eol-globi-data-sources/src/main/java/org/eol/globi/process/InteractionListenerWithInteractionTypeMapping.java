@@ -1,12 +1,17 @@
-package org.eol.globi.data;
+package org.eol.globi.process;
 
+import org.eol.globi.data.ImportLogger;
+import org.eol.globi.data.LogUtil;
+import org.eol.globi.data.StudyImporterException;
 import org.eol.globi.domain.InteractType;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.TaxonUtil;
 import org.eol.globi.util.InteractTypeMapper;
 import org.eol.globi.util.InteractUtil;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_ID;
@@ -16,31 +21,32 @@ import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_NAME_VER
 
 public class InteractionListenerWithInteractionTypeMapping implements InteractionListener {
     private final InteractTypeMapper mapper;
-    final InteractionListener listener;
+    private final InteractionListener listener;
     private final ImportLogger logger;
-    private final AtomicInteger counter = new AtomicInteger(0);
 
-    InteractionListenerWithInteractionTypeMapping(InteractionListener listener,
-                                                  InteractTypeMapper mapper,
-                                                  ImportLogger logger) {
+    public InteractionListenerWithInteractionTypeMapping(InteractionListener listener,
+                                                         InteractTypeMapper mapper,
+                                                         ImportLogger logger) {
         this.listener = listener;
         this.mapper = mapper;
         this.logger = logger;
     }
 
     @Override
-    public void newLink(Map<String, String> link) throws StudyImporterException {
-        TaxonUtil.enrichTaxonNames(link);
+    public void on(Map<String, String> interaction) throws StudyImporterException {
+        onEnriched(TaxonUtil.enrichTaxonNames(interaction));
+    }
 
-        String interactionTypeName = link.get(INTERACTION_TYPE_NAME);
-        String interactionTypeId = link.get(INTERACTION_TYPE_ID);
+    public void onEnriched(Map<String, String> interaction) throws StudyImporterException {
+        String interactionTypeName = interaction.get(INTERACTION_TYPE_NAME);
+        String interactionTypeId = interaction.get(INTERACTION_TYPE_ID);
         if (mapper.shouldIgnoreInteractionType(interactionTypeName) || mapper.shouldIgnoreInteractionType(interactionTypeId)) {
             if (logger != null) {
-                logger.info(LogUtil.contextFor(link), "ignoring interaction record with interaction name [" + interactionTypeName + "]");
+                logger.info(LogUtil.contextFor(interaction), "ignoring interaction record with interaction name [" + interactionTypeName + "]");
             }
         } else if (mapper.shouldIgnoreInteractionType(interactionTypeId)) {
             if (logger != null) {
-                logger.info(LogUtil.contextFor(link), "ignoring interaction record with interaction id [" + interactionTypeName + "]");
+                logger.info(LogUtil.contextFor(interaction), "ignoring interaction record with interaction id [" + interactionTypeName + "]");
             }
         } else {
             InteractType mappedType = null;
@@ -52,21 +58,15 @@ public class InteractionListenerWithInteractionTypeMapping implements Interactio
                 mappedType = mapper.getInteractType(interactionTypeName);
             }
 
-            HashMap<String, String> properties = new HashMap<>(link);
+            Map<String, String> properties = new TreeMap<>(interaction);
             if (mappedType != null) {
                 InteractUtil.putNotNull(properties, INTERACTION_TYPE_ID_VERBATIM, properties.get(INTERACTION_TYPE_ID));
                 InteractUtil.putNotNull(properties, INTERACTION_TYPE_NAME_VERBATIM, properties.get(INTERACTION_TYPE_NAME));
                 properties.put(INTERACTION_TYPE_ID, mappedType.getIRI());
                 properties.put(INTERACTION_TYPE_NAME, mappedType.getLabel());
             }
-            listener.newLink(properties);
-            counter.incrementAndGet();
+            listener.on(properties);
         }
     }
-
-    public int getNumberOfSubmittedLinks() {
-        return counter.get();
-    }
-
 
 }

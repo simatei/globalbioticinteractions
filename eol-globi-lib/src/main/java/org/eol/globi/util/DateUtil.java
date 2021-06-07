@@ -2,13 +2,18 @@ package org.eol.globi.util;
 
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeFieldType;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.DateTimeFormatterBuilder;
 import org.joda.time.format.ISODateTimeFormat;
 
 import java.util.Date;
 
 public final class DateUtil {
+    private static DateTimeFormatter basicYearDateFormatter;
+
     public static String printDate(Date date) {
         return date == null ? "" : ISODateTimeFormat.dateTimeNoMillis().withZoneUTC().print(date.getTime());
     }
@@ -28,12 +33,57 @@ public final class DateUtil {
     }
 
     public static DateTime parsePatternUTC(String dateString, String pattern) {
-        return DateTimeFormat.forPattern(pattern).withZoneUTC().parseDateTime(dateString);
+        return DateTimeFormat
+                .forPattern(pattern)
+                .withZoneUTC()
+                .parseDateTime(dateString);
     }
 
     public static DateTime parseDateUTC(String eventDate) {
         String firstInRange = splitPossibleRange(eventDate);
-        return ISODateTimeFormat.dateTimeParser().withZoneUTC().parseDateTime(firstInRange);
+
+        DateTimeFormatter formatter = null;
+        if (StringUtils.containsNone(firstInRange, '-', ':')) {
+            if (StringUtils.contains(firstInRange, "T")) {
+                formatter = ISODateTimeFormat.basicDateTimeNoMillis();
+            } else {
+                if (StringUtils.length(eventDate) == 8) {
+                    formatter = ISODateTimeFormat.basicDate();
+                } else if (StringUtils.length(eventDate) == 6) {
+                    if (basicYearDateFormatter == null) {
+                        basicYearDateFormatter = new DateTimeFormatterBuilder()
+                                .appendYear(4, 4)
+                                .appendFixedDecimal(DateTimeFieldType.monthOfYear(), 2)
+                                .toFormatter();
+                    }
+                    formatter = basicYearDateFormatter;
+                }
+            }
+        }
+
+
+        return (formatter == null ? ISODateTimeFormat.dateTimeParser() : formatter)
+                .withZoneUTC()
+                .parseDateTime(firstInRange);
+    }
+
+    public static DateTime parseDateUTC2(String eventDate) {
+
+        String firstInRange = splitPossibleRange(eventDate);
+        DateTimeFormatter formatter = null;
+        if (StringUtils.contains(firstInRange, "T")) {
+            formatter = StringUtils.containsAny(firstInRange, "-", ":")
+                    ? ISODateTimeFormat.dateTimeParser()
+                    : ISODateTimeFormat.basicDateTimeNoMillis();
+        } else {
+            formatter = StringUtils.containsAny(firstInRange, "-", ":")
+                    ? ISODateTimeFormat.dateParser()
+                    : ISODateTimeFormat.basicDate();
+        }
+
+        return formatter
+                .withZoneUTC()
+                .parseDateTime(firstInRange);
     }
 
     public static String splitPossibleRange(String eventDate) {

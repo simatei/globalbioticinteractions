@@ -2,6 +2,7 @@ package org.eol.globi.taxon;
 
 import org.apache.commons.lang3.StringUtils;
 import org.eol.globi.data.NodeFactoryException;
+import org.eol.globi.domain.PropertyAndValueDictionary;
 import org.eol.globi.domain.RelTypes;
 import org.eol.globi.domain.Taxon;
 import org.eol.globi.domain.TaxonImpl;
@@ -14,6 +15,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 public class ResolvingTaxonIndex extends NonResolvingTaxonIndex {
     private PropertyEnricher enricher;
@@ -69,42 +71,65 @@ public class ResolvingTaxonIndex extends NonResolvingTaxonIndex {
         return indexedTaxon;
     }
 
-    public TaxonNode indexFirstAndConnectRemaining(List<Map<String, String>> taxonMatches, Taxon origTaxon) throws NodeFactoryException {
-        Taxon primaryTaxon = selectPrimaryTaxon(taxonMatches);
+    private TaxonNode indexFirstAndConnectRemaining(List<Map<String, String>> taxonMatches, Taxon origTaxon) throws NodeFactoryException {
+        Taxon primaryTaxon = selectPrimaryTaxon(taxonMatches, origTaxon);
         return indexAndConnect(taxonMatches, origTaxon, primaryTaxon);
     }
 
-    public Taxon selectPrimaryTaxon(List<Map<String, String>> taxonMatches) {
+    private Taxon selectPrimaryTaxon(List<Map<String, String>> taxonMatches, Taxon origTaxon) {
         Taxon primary = null;
         for (Map<String, String> taxonMatch : taxonMatches) {
-            primary = TaxonUtil.mapToTaxon(taxonMatch);
-            if (!TaxonUtil.hasLiteratureReference(primary)) {
+            Taxon matchedTaxon = TaxonUtil.mapToTaxon(taxonMatch);
+            if (!TaxonUtil.likelyHomonym(origTaxon, matchedTaxon)) {
+                primary = matchedTaxon;
+            }
+            if (primary != null && !TaxonUtil.hasLiteratureReference(primary)) {
                 break;
             }
         }
         return primary;
     }
 
-    public TaxonNode indexAndConnect(List<Map<String, String>> taxonMatches, Taxon origTaxon, Taxon primaryTaxon) throws NodeFactoryException {
-        TaxonNode indexedTaxon = findTaxon(primaryTaxon);
+    private TaxonNode indexAndConnect(List<Map<String, String>> taxonMatches, Taxon origTaxon, Taxon primaryTaxon) throws NodeFactoryException {
+        TaxonNode indexedTaxon = primaryTaxon == null ? null : findTaxon(primaryTaxon);
         if (indexedTaxon == null) {
             if (TaxonUtil.isResolved(primaryTaxon)) {
-                indexedTaxon = createAndIndexTaxon(origTaxon, primaryTaxon);
+                indexedTaxon = indexAndConnect(taxonMatches, origTaxon, primaryTaxon, indexedTaxon);
 
-                for (Map<String, String> taxonMatch : taxonMatches) {
-                    Taxon sameAsTaxon = TaxonUtil.mapToTaxon(taxonMatch);
-                    if (!TaxonUtil.likelyHomonym(indexedTaxon, sameAsTaxon)) {
-                        NodeUtil.connectTaxa(
-                                sameAsTaxon,
-                                indexedTaxon,
-                                getGraphDbService(),
-                                RelTypes.SAME_AS
-                        );
-                    }
-                }
             }
         }
         return indexedTaxon;
+    }
+
+    private TaxonNode indexAndConnect(List<Map<String, String>> taxonMatches, Taxon origTaxon, Taxon primaryTaxon, TaxonNode indexedTaxon) throws NodeFactoryException {
+        Predicate<Taxon> selector = subj -> true;
+
+        for (Map<String, String> taxonMatch : taxonMatches) {
+            Taxon sameAsTaxon = TaxonUtil.mapToTaxon(taxonMatch);
+            if (StringUtils.equals(sameAsTaxon.getExternalId(), origTaxon.getExternalId())) {
+                indexedTaxon = createAndIndexTaxon(origTaxon, sameAsTaxon);
+                selector = new ExcludeHomonyms(sameAsTaxon);
+                break;
+            }
+        }
+
+        final TaxonNode resolvedTaxon =
+                indexedTaxon == null
+                        ? createAndIndexTaxon(origTaxon, primaryTaxon)
+                        : indexedTaxon;
+
+        taxonMatches
+                .stream()
+                .map(TaxonUtil::mapToTaxon)
+                .filter(selector)
+                .forEach(sameAsTaxon -> NodeUtil.connectTaxa(
+                        sameAsTaxon,
+                        resolvedTaxon,
+                        getGraphDbService(),
+                        RelTypes.SAME_AS
+                ));
+
+        return resolvedTaxon;
     }
 
     public void setEnricher(PropertyEnricher enricher) {

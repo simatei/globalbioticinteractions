@@ -1,6 +1,12 @@
-package org.eol.globi.data;
+package org.eol.globi.process;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eol.globi.data.DatasetImporterForMetaTable;
+import org.eol.globi.data.ImportLogger;
+import org.eol.globi.data.LocationUtil;
+import org.eol.globi.data.NodeFactory;
+import org.eol.globi.data.NodeFactoryException;
+import org.eol.globi.data.StudyImporterException;
 import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.Location;
 import org.eol.globi.domain.LocationImpl;
@@ -23,11 +29,7 @@ import org.joda.time.Interval;
 
 import java.io.IOException;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.eol.globi.data.DatasetImporterForTSV.ARGUMENT_TYPE_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.BASIS_OF_RECORD_ID;
@@ -35,7 +37,6 @@ import static org.eol.globi.data.DatasetImporterForTSV.BASIS_OF_RECORD_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.DECIMAL_LATITUDE;
 import static org.eol.globi.data.DatasetImporterForTSV.DECIMAL_LONGITUDE;
 import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_ID;
-import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.LOCALITY_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.LOCALITY_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.REFERENCE_CITATION;
@@ -82,163 +83,64 @@ import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_PATH_IDS;
 import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_PATH_NAMES;
 import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_RANK;
 
-class InteractionListenerImpl implements InteractionListener {
+public class InteractionImporter implements InteractionListener {
+
     private static final String[] LOCALITY_ID_TERMS = {LOCALITY_ID, DwcTerm.locationID.normQName};
     private static final String[] LOCALITY_NAME_TERMS = {LOCALITY_NAME, DwcTerm.locality.normQName, DwcTerm.verbatimLocality.normQName};
+    private final ImportLogger logger;
     private final NodeFactory nodeFactory;
     private final GeoNamesService geoNamesService;
 
-    private final ImportLogger logger;
 
-    public InteractionListenerImpl(NodeFactory nodeFactory, GeoNamesService geoNamesService, ImportLogger logger) {
-        this.nodeFactory = nodeFactory;
-        this.geoNamesService = geoNamesService;
+    public InteractionImporter(NodeFactory factory, ImportLogger logger, GeoNamesService geonamesService) {
         this.logger = logger;
+        this.nodeFactory = factory;
+        this.geoNamesService = geonamesService;
+    }
+
+    public InteractionImporter(NodeFactory factory, GeoNamesService geonamesService, ImportLogger logger) {
+        this.logger = logger;
+        this.nodeFactory = factory;
+        this.geoNamesService = geonamesService;
+    }
+
+    static boolean hasStartDateAfterEndDate(String eventDate) {
+        boolean hasStartedAfterFinishing = false;
+        final String[] split = StringUtils.split(eventDate, "/");
+        if (split.length > 1) {
+            try {
+                Interval actual = Interval.parse(eventDate);
+                hasStartedAfterFinishing = actual.getStart().isAfter(actual.getEnd());
+            } catch (IllegalArgumentException ex) {
+                final int diff = StringUtils.length(split[0]) - StringUtils.length(split[1]);
+                if (diff > 0) {
+                    final String prefix = StringUtils.substring(split[0], 0, diff);
+                    final String attemptWorkaround = StringUtils.join(split[0], "/", prefix + split[1]);
+                    try {
+                        Interval actual = Interval.parse(attemptWorkaround);
+                        hasStartedAfterFinishing = actual.getStart().isAfter(actual.getEnd());
+                    } catch (IllegalArgumentException e) {
+                        hasStartedAfterFinishing = true;
+                    }
+                } else {
+                    hasStartedAfterFinishing = true;
+                }
+            }
+        }
+        return hasStartedAfterFinishing;
     }
 
     @Override
-    public void newLink(Map<String, String> link) throws StudyImporterException {
-        try {
-            List<Map<String, String>> propertiesList = AssociatedTaxaUtil.expandIfNeeded(link);
-            for (Map<String, String> expandedLink : propertiesList) {
-                addPlaceholderNamesIfNeeded(expandedLink);
-
-                if (expandedLink != null && validLink(expandedLink)) {
-                    logIfPossible(expandedLink, "biotic interaction found");
-                    importValidLink(expandedLink);
-                }
-            }
-        } catch (NodeFactoryException e) {
-            throw new StudyImporterException("failed to import: " + link, e);
-        }
+    public void on(Map<String, String> interaction) throws StudyImporterException {
+        importInteraction(interaction);
     }
 
-    public void addPlaceholderNamesIfNeeded(Map<String, String> expandedLink) {
-        if (createSourceTaxonPredicate(null).negate().test(expandedLink)) {
-            Stream<String> placeholderNames = Stream.of(
-                    SOURCE_INSTITUTION_CODE,
-                    SOURCE_COLLECTION_CODE,
-                    SOURCE_COLLECTION_ID,
-                    SOURCE_CATALOG_NUMBER,
-                    SOURCE_OCCURRENCE_ID);
-            addPlaceholderNamesIfPossible(expandedLink, placeholderNames, "source", SOURCE_TAXON_NAME);
-        }
-        if (createTargetTaxonPredicate(null).negate().test(expandedLink)) {
-            Stream<String> placeholderNames = Stream.of(
-                    TARGET_INSTITUTION_CODE,
-                    TARGET_COLLECTION_CODE,
-                    TARGET_COLLECTION_ID,
-                    TARGET_CATALOG_NUMBER,
-                    TARGET_OCCURRENCE_ID);
-            addPlaceholderNamesIfPossible(expandedLink, placeholderNames, "target", TARGET_TAXON_NAME);
-        }
-    }
 
-    public void addPlaceholderNamesIfPossible(Map<String, String> expandedLink, Stream<String> placeholderNames, String sourceOrTarget, String nameToBeFilled) {
-        final String placeholderMessage = " using institutionCode/collectionCode/collectionId/catalogNumber/occurrenceId as placeholder";
-
-        String targetNamePlaceholder = placeholderNames
-                .map(expandedLink::get)
-                .filter(StringUtils::isNotBlank)
-                .collect(Collectors.joining(CharsetConstant.SEPARATOR));
-        if (StringUtils.isNotBlank(targetNamePlaceholder)) {
-            expandedLink.putIfAbsent(nameToBeFilled, targetNamePlaceholder);
-            logWarningIfPossible(expandedLink, sourceOrTarget + " taxon name missing:" + placeholderMessage);
-        }
-    }
-
-    private void logIfPossible(Map<String, String> expandedProperties, String msg) {
-        if (logger != null) {
-            logger.info(LogUtil.contextFor(expandedProperties), msg);
-        }
-    }
-
-    private boolean validLink(Map<String, String> link) {
-        return validLink(link, getLogger());
-    }
-
-    static boolean validLink(Map<String, String> link, ImportLogger logger) {
-        Predicate<Map<String, String>> hasSourceTaxon = createSourceTaxonPredicate(logger);
-
-        Predicate<Map<String, String>> hasTargetTaxon = createTargetTaxonPredicate(logger);
-
-        Predicate<Map<String, String>> hasInteractionType = createInteractionTypePredicate(logger);
-
-        Predicate<Map<String, String>> hasReferenceId = createReferencePredicate(logger);
-
-        return hasSourceTaxon
-                .and(hasTargetTaxon)
-                .and(hasInteractionType)
-                .and(hasReferenceId)
-                .test(link);
-    }
-
-    private static Predicate<Map<String, String>> createSourceTaxonPredicate(ImportLogger logger) {
-        return (Map<String, String> l) -> {
-            String sourceTaxonName = l.get(SOURCE_TAXON_NAME);
-            String sourceTaxonId = l.get(SOURCE_TAXON_ID);
-            boolean isValid = StringUtils.isNotBlank(sourceTaxonName) || StringUtils.isNotBlank(sourceTaxonId);
-            if (!isValid && logger != null) {
-                logger.warn(LogUtil.contextFor(l), "source taxon name missing");
-            }
-            return isValid;
-        };
-    }
-
-    private static Predicate<Map<String, String>> createTargetTaxonPredicate(ImportLogger logger) {
-        return (Map<String, String> l) -> {
-            String targetTaxonName = l.get(TARGET_TAXON_NAME);
-            String targetTaxonId = l.get(TARGET_TAXON_ID);
-
-            boolean isValid = StringUtils.isNotBlank(targetTaxonName) || StringUtils.isNotBlank(targetTaxonId);
-            if (!isValid && logger != null) {
-                logger.warn(LogUtil.contextFor(l), "target taxon name missing");
-            }
-            return isValid;
-        };
-    }
-
-    private static Predicate<Map<String, String>> createReferencePredicate(ImportLogger logger) {
-        return (Map<String, String> l) -> {
-            boolean isValid = StringUtils.isNotBlank(l.get(REFERENCE_ID));
-            if (!isValid && logger != null) {
-                logger.warn(LogUtil.contextFor(l), "missing [" + REFERENCE_ID + "]");
-            }
-            return isValid;
-        };
-    }
-
-    static Predicate<Map<String, String>> createInteractionTypePredicate(ImportLogger logger) {
-        return (Map<String, String> l) -> {
-            String interactionTypeId = l.get(INTERACTION_TYPE_ID);
-            boolean hasValidId = false;
-            if (StringUtils.isBlank(interactionTypeId) && logger != null) {
-                if (StringUtils.isBlank(l.get(INTERACTION_TYPE_NAME))) {
-                    logger.warn(LogUtil.contextFor(l), "missing interaction type");
-                } else {
-                    logger.warn(LogUtil.contextFor(l), "found unsupported interaction type with name: [" + l.get(INTERACTION_TYPE_NAME) + "]");
-                }
-            } else {
-                hasValidId = InteractType.typeOf(interactionTypeId) != null;
-                if (!hasValidId && logger != null) {
-                    StringBuilder msg = new StringBuilder("found unsupported interaction type with id: [" + interactionTypeId + "]");
-                    if (StringUtils.isNotBlank(l.get(INTERACTION_TYPE_NAME))) {
-                        msg.append(" and name: [")
-                                .append(l.get(INTERACTION_TYPE_NAME))
-                                .append("]");
-                    }
-                    logger.warn(LogUtil.contextFor(l), msg.toString());
-                }
-            }
-            return hasValidId;
-        };
-    }
-
-    private void importValidLink(Map<String, String> link) throws StudyImporterException {
-        Study study = nodeFactory.getOrCreateStudy(studyFromLink(link));
+    private void importInteraction(Map<String, String> interaction) throws StudyImporterException {
+        Study study = nodeFactory.getOrCreateStudy(studyOf(interaction));
 
         Specimen source = createSpecimen(
-                link,
+                interaction,
                 study,
                 SOURCE_TAXON_NAME,
                 SOURCE_TAXON_ID,
@@ -253,15 +155,15 @@ class InteractionListenerImpl implements InteractionListener {
                 SOURCE_TAXON_RANK,
                 SOURCE_TAXON_PATH_IDS);
 
-        setExternalIdNotBlank(link, SOURCE_OCCURRENCE_ID, source);
-        setPropertyIfAvailable(link, source, SOURCE_OCCURRENCE_ID, OCCURRENCE_ID);
-        setPropertyIfAvailable(link, source, SOURCE_CATALOG_NUMBER, CATALOG_NUMBER);
-        setPropertyIfAvailable(link, source, SOURCE_COLLECTION_CODE, COLLECTION_CODE);
-        setPropertyIfAvailable(link, source, SOURCE_COLLECTION_ID, COLLECTION_ID);
-        setPropertyIfAvailable(link, source, SOURCE_INSTITUTION_CODE, INSTITUTION_CODE);
+        setExternalIdNotBlank(interaction, SOURCE_OCCURRENCE_ID, source);
+        setPropertyIfAvailable(interaction, source, SOURCE_OCCURRENCE_ID, OCCURRENCE_ID);
+        setPropertyIfAvailable(interaction, source, SOURCE_CATALOG_NUMBER, CATALOG_NUMBER);
+        setPropertyIfAvailable(interaction, source, SOURCE_COLLECTION_CODE, COLLECTION_CODE);
+        setPropertyIfAvailable(interaction, source, SOURCE_COLLECTION_ID, COLLECTION_ID);
+        setPropertyIfAvailable(interaction, source, SOURCE_INSTITUTION_CODE, INSTITUTION_CODE);
 
         Specimen target = createSpecimen(
-                link,
+                interaction,
                 study,
                 TARGET_TAXON_NAME,
                 TARGET_TAXON_ID,
@@ -276,18 +178,18 @@ class InteractionListenerImpl implements InteractionListener {
                 TARGET_TAXON_RANK,
                 TARGET_TAXON_PATH_IDS);
 
-        setExternalIdNotBlank(link, TARGET_OCCURRENCE_ID, target);
-        setPropertyIfAvailable(link, target, TARGET_OCCURRENCE_ID, OCCURRENCE_ID);
-        setPropertyIfAvailable(link, target, TARGET_CATALOG_NUMBER, CATALOG_NUMBER);
-        setPropertyIfAvailable(link, target, TARGET_COLLECTION_CODE, COLLECTION_CODE);
-        setPropertyIfAvailable(link, target, TARGET_COLLECTION_ID, COLLECTION_ID);
-        setPropertyIfAvailable(link, target, TARGET_INSTITUTION_CODE, INSTITUTION_CODE);
+        setExternalIdNotBlank(interaction, TARGET_OCCURRENCE_ID, target);
+        setPropertyIfAvailable(interaction, target, TARGET_OCCURRENCE_ID, OCCURRENCE_ID);
+        setPropertyIfAvailable(interaction, target, TARGET_CATALOG_NUMBER, CATALOG_NUMBER);
+        setPropertyIfAvailable(interaction, target, TARGET_COLLECTION_CODE, COLLECTION_CODE);
+        setPropertyIfAvailable(interaction, target, TARGET_COLLECTION_ID, COLLECTION_ID);
+        setPropertyIfAvailable(interaction, target, TARGET_INSTITUTION_CODE, INSTITUTION_CODE);
 
 
-        String interactionTypeId = link.get(INTERACTION_TYPE_ID);
+        String interactionTypeId = interaction.get(INTERACTION_TYPE_ID);
         InteractType type = InteractType.typeOf(interactionTypeId);
 
-        source.interactsWith(target, type, getOrCreateLocation(link));
+        source.interactsWith(target, type, getOrCreateLocation(interaction));
     }
 
     private void setPropertyIfAvailable(Map<String, String> link, Specimen source, String key, String propertyKey) {
@@ -375,16 +277,14 @@ class InteractionListenerImpl implements InteractionListener {
         }
     }
 
-    private StudyImpl studyFromLink(Map<String, String> l) {
+    private StudyImpl studyOf(Map<String, String> l) {
         String referenceCitation = l.get(REFERENCE_CITATION);
         DOI doi = null;
         String doiString = l.get(REFERENCE_DOI);
         try {
             doi = StringUtils.isBlank(doiString) ? null : DOI.create(doiString);
         } catch (MalformedDOIException e) {
-            if (logger != null) {
-                logger.warn(LogUtil.contextFor(l), "found malformed doi [" + doiString + "]");
-            }
+            LogUtil.logWarningIfPossible(l, "found malformed doi [" + doiString + "]", logger);
         }
         StudyImpl study1 = new StudyImpl(l.get(REFERENCE_ID),
                 doi,
@@ -428,33 +328,8 @@ class InteractionListenerImpl implements InteractionListener {
 
     }
 
-    static boolean hasStartDateAfterEndDate(String eventDate) {
-        boolean hasStartedAfterFinishing = false;
-        final String[] split = StringUtils.split(eventDate, "/");
-        if (split.length > 1) {
-            try {
-                Interval actual = Interval.parse(eventDate);
-                hasStartedAfterFinishing = actual.getStart().isAfter(actual.getEnd());
-            } catch (IllegalArgumentException ex) {
-                final int diff = StringUtils.length(split[0]) - StringUtils.length(split[1]);
-                if (diff > 0) {
-                    final String prefix = StringUtils.substring(split[0], 0, diff);
-                    final String attemptWorkaround = StringUtils.join(split[0], "/", prefix + split[1]);
-                    try {
-                        Interval actual = Interval.parse(attemptWorkaround);
-                        hasStartedAfterFinishing = actual.getStart().isAfter(actual.getEnd());
-                    } catch (IllegalArgumentException e) {
-                        hasStartedAfterFinishing = true;
-                    }
-                } else {
-                    hasStartedAfterFinishing = true;
-                }
-            }
-        }
-        return hasStartedAfterFinishing;
-    }
 
-    private static String applySymbiotaDateTimeFix(String eventDate) {
+    private String applySymbiotaDateTimeFix(String eventDate) {
         String eventDateCorrected = eventDate;
         if (StringUtils.contains(eventDate, "-00")) {
             // see https://github.com/globalbioticinteractions/scan/issues/2
@@ -481,30 +356,30 @@ class InteractionListenerImpl implements InteractionListener {
         }
     }
 
-    private Location getOrCreateLocation(Map<String, String> link) throws NodeFactoryException {
+    private Location getOrCreateLocation(Map<String, String> interaction) throws NodeFactoryException {
         LatLng centroid = null;
         String[] latitudes = {DECIMAL_LATITUDE, DatasetImporterForMetaTable.LATITUDE};
-        String latitude = getFirstValueForTerms(link, latitudes);
+        String latitude = getFirstValueForTerms(interaction, latitudes);
 
         String[] longitudes = {DECIMAL_LONGITUDE, DatasetImporterForMetaTable.LONGITUDE};
-        String longitude = getFirstValueForTerms(link, longitudes);
+        String longitude = getFirstValueForTerms(interaction, longitudes);
 
         if (StringUtils.isNotBlank(latitude) && StringUtils.isNotBlank(longitude)) {
             try {
                 centroid = LocationUtil.parseLatLng(latitude, longitude);
             } catch (InvalidLocationException e) {
-                logWarningIfPossible(link, "found invalid location: [" + e.getMessage() + "]");
+                logWarningIfPossible(interaction, "found invalid location: [" + e.getMessage() + "]");
             }
         }
-        String localityId = getFirstValueForTerms(link, LOCALITY_ID_TERMS);
+        String localityId = getFirstValueForTerms(interaction, LOCALITY_ID_TERMS);
 
         if (centroid == null) {
             if (StringUtils.isNotBlank(localityId)) {
                 try {
-                    centroid = getGeoNamesService().findLatLng(localityId);
+                    centroid = geoNamesService.findLatLng(localityId);
                 } catch (IOException ex) {
                     String message = "failed to lookup [" + localityId + "] because of: [" + ex.getMessage() + "]";
-                    logWarningIfPossible(link, message);
+                    logWarningIfPossible(interaction, message);
                 }
             }
         }
@@ -522,7 +397,7 @@ class InteractionListenerImpl implements InteractionListener {
             if (StringUtils.isNotBlank(localityId)) {
                 location.setLocalityId(localityId);
             }
-            String localityName = getFirstValueForTerms(link, LOCALITY_NAME_TERMS);
+            String localityName = getFirstValueForTerms(interaction, LOCALITY_NAME_TERMS);
             if (StringUtils.isNotBlank(localityName)) {
                 location.setLocality(localityName);
             }
@@ -531,13 +406,7 @@ class InteractionListenerImpl implements InteractionListener {
     }
 
     private void logWarningIfPossible(Map<String, String> link, String message) {
-        logWarningIfPossible(link, message, getLogger());
-    }
-
-    private static void logWarningIfPossible(Map<String, String> link, String message, ImportLogger logger) {
-        if (logger != null) {
-            logger.warn(LogUtil.contextFor(link), message);
-        }
+        LogUtil.logWarningIfPossible(link, message, logger);
     }
 
     private String getFirstValueForTerms(Map<String, String> link, String[] latitudes) {
@@ -549,14 +418,5 @@ class InteractionListenerImpl implements InteractionListener {
         }
         return latitude;
     }
-
-    public GeoNamesService getGeoNamesService() {
-        return geoNamesService;
-    }
-
-    public ImportLogger getLogger() {
-        return logger;
-    }
-
 
 }

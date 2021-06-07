@@ -1,6 +1,7 @@
 package org.eol.globi.taxon;
 
 import org.eol.globi.data.CharsetConstant;
+import org.eol.globi.data.GraphDBTestCase;
 import org.eol.globi.data.NodeFactoryException;
 import org.eol.globi.db.GraphServiceFactoryProxy;
 import org.eol.globi.domain.PropertyAndValueDictionary;
@@ -29,16 +30,20 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import static org.eol.globi.tool.LinkerTaxonIndex.INDEX_TAXON_NAMES_AND_IDS;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsNot.not;
 import static org.hamcrest.core.IsNull.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.fail;
 
-public class ResolvingTaxonIndexTest extends NonResolvingTaxonIndexTest {
+public class ResolvingTaxonIndexTest extends GraphDBTestCase {
+
+    private NonResolvingTaxonIndex taxonService;
+
     public static final String EXPECTED_COMMON_NAMES = "some german name @de" + CharsetConstant.SEPARATOR + "some english name @en" + CharsetConstant.SEPARATOR;
 
     @Before
@@ -243,7 +248,33 @@ public class ResolvingTaxonIndexTest extends NonResolvingTaxonIndexTest {
 
             }
         });
-        super.createTaxonWithExplicitRanks();
+        Taxon taxon1 = new TaxonImpl("foo", "foo:123");
+        taxon1.setPath("a kingdom name | a phylum name | boo name | a class name | an order name | a family name | a genus name | a species name");
+        taxon1.setPathIds("a kingdom id | a phylum id | boo id | a class id | an order id | a family id | a genus id | a species id");
+        taxon1.setPathNames("kingdom | phylum | boo | class | order | family | genus | species");
+        TaxonNode taxon = taxonService.getOrCreateTaxon(taxon1);
+
+        assertThat(propertyOf(taxon, "kingdomName"), is("a kingdom name"));
+        assertThat(propertyOf(taxon, "kingdomId"), is("a kingdom id"));
+        assertThat(propertyOf(taxon, "phylumName"), is("a phylum name"));
+        assertThat(propertyOf(taxon, "phylumId"), is("a phylum id"));
+
+        assertThat(propertyOf(taxon, "orderName"), is("an order name"));
+        assertThat(propertyOf(taxon, "orderId"), is("an order id"));
+
+        assertThat(propertyOf(taxon, "className"), is("a class name"));
+        assertThat(propertyOf(taxon, "classId"), is("a class id"));
+        assertThat(propertyOf(taxon, "familyName"), is("a family name"));
+        assertThat(propertyOf(taxon, "familyId"), is("a family id"));
+        assertThat(propertyOf(taxon, "genusName"), is("a genus name"));
+        assertThat(propertyOf(taxon, "genusId"), is("a genus id"));
+        assertThat(propertyOf(taxon, "speciesName"), is("a species name"));
+        assertThat(propertyOf(taxon, "speciesId"), is("a species id"));
+
+    }
+
+    private Object propertyOf(TaxonNode taxon, String kingdomName) {
+        return NonResolvingTaxonIndexTest.propertyOf(taxon, kingdomName);
     }
 
     public ResolvingTaxonIndex getIndex() {
@@ -328,5 +359,109 @@ public class ResolvingTaxonIndexTest extends NonResolvingTaxonIndexTest {
         assertThat(foundTaxon.getNodeID(), is(first.getNodeID()));
         foundTaxon = this.taxonService.findTaxonByName("preferred");
         assertThat(foundTaxon.getNodeID(), is(first.getNodeID()));
+    }
+
+    @Test
+    public final void doNotMatchHomonyms() throws NodeFactoryException {
+        ResolvingTaxonIndex taxonService = createTaxonService(getGraphDb());
+        taxonService.setEnricher(new PropertyEnricherSingle() {
+            @Override
+            public Map<String, String> enrichFirstMatch(Map<String, String> properties) throws PropertyEnricherException {
+                return TaxonUtil.taxonToMap(TaxonUtil.mapToTaxon(properties));
+            }
+
+            @Override
+            public void shutdown() {
+
+            }
+        });
+        this.taxonService = taxonService;
+
+        Taxon taxon2 = new TaxonImpl("some name", "some:id");
+
+        taxon2.setPath("one | two | three | some name");
+        taxon2.setPathNames("kingdom | family | genus | species");
+
+        TaxonNode first = this.taxonService.getOrCreateTaxon(taxon2);
+        assertThat(first.getName(), is("some name"));
+        assertThat(first.getPath(), is("one | two | three | some name"));
+
+        Taxon taxon1 = new TaxonImpl("some name", "some:id");
+        taxon1.setPath("four | five | six | some name");
+        taxon1.setPathNames("kingdom | family | genus | species");
+
+        TaxonNode second = this.taxonService.getOrCreateTaxon(taxon1);
+        assertThat(second.getName(), is("some name"));
+        assertThat(second.getPath(), is("four | five | six | some name"));
+
+
+        assertThat(second.getNodeID(), is(not(first.getNodeID())));
+
+    }
+
+    @Test
+    public final void labelUnambiguousMatchesByPath() throws NodeFactoryException {
+        ResolvingTaxonIndex taxonService = createTaxonService(getGraphDb());
+        configureAnuraHits(taxonService);
+        this.taxonService = taxonService;
+
+
+        TaxonImpl anura = new TaxonImpl("Anura", null);
+        anura.setPath("four | five | six | some name");
+        anura.setPathNames("kingdom | family | genus | species");
+
+        TaxonNode first = this.taxonService.getOrCreateTaxon(anura);
+        assertThat(first.getName(), is("Anura"));
+        assertThat(first.getExternalId(), is("frogs:1"));
+
+        TaxonNode found = taxonService.findTaxonByName("Anura");
+        assertThat(found.getName(), is("Anura"));
+        assertThat(found.getExternalId(), is("frogs:1"));
+
+    }
+
+    @Test
+    public final void labelUnambiguousMatchesById() throws NodeFactoryException {
+        ResolvingTaxonIndex taxonService = createTaxonService(getGraphDb());
+        configureAnuraHits(taxonService);
+        this.taxonService = taxonService;
+
+        TaxonImpl anura = new TaxonImpl("Anura", "frogs:1");
+
+        TaxonNode first = this.taxonService.getOrCreateTaxon(anura);
+        assertThat(first.getName(), is("Anura"));
+        assertThat(first.getExternalId(), is("frogs:1"));
+        assertThat(first.getPath(), is("four | five | six | some name"));
+
+        TaxonNode found = taxonService.findTaxonByName("Anura");
+        assertThat(found.getName(), is("Anura"));
+        assertThat(found.getExternalId(), is("frogs:1"));
+
+    }
+
+    public void configureAnuraHits(ResolvingTaxonIndex taxonService) {
+        taxonService.setEnricher(new PropertyEnricher() {
+            @Override
+            public Map<String, String> enrichFirstMatch(Map<String, String> properties) throws PropertyEnricherException {
+                return enrichAllMatches(properties).get(0);
+            }
+
+            @Override
+            public List<Map<String, String>> enrichAllMatches(Map<String, String> properties) throws PropertyEnricherException {
+                Taxon taxon1 = new TaxonImpl("Anura", "frogs:1");
+                taxon1.setPath("four | five | six | some name");
+                taxon1.setPathNames("kingdom | family | genus | species");
+
+                Taxon taxon2 = new TaxonImpl("Anura", "mollusk:1");
+                taxon2.setPath("one | two | three | some name");
+                taxon2.setPathNames("kingdom | family | genus | species");
+                return Arrays.asList(TaxonUtil.taxonToMap(taxon1), TaxonUtil.taxonToMap(taxon2));
+            }
+
+            @Override
+            public void shutdown() {
+
+            }
+        });
     }
 }

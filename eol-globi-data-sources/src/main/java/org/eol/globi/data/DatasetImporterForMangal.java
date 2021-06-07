@@ -1,7 +1,8 @@
 package org.eol.globi.data;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.eol.globi.domain.PropertyAndValueDictionary;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.domain.InteractType;
@@ -16,10 +17,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static org.eol.globi.data.DatasetImporterForTSV.STUDY_SOURCE_CITATION;
+import static org.eol.globi.data.DatasetImporterForTSV.DATASET_CITATION;
 
 public class DatasetImporterForMangal extends DatasetImporterWithListener {
-    private static final Log LOG = LogFactory.getLog(DatasetImporterForMangal.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DatasetImporterForMangal.class);
     public static final String MANGAL_API_ENDPOINT = "https://mangal.io/api/v2";
     public static final Map<String, InteractType> INTERACTION_TYPE_MAP = new HashMap<String, InteractType>() {{
         put("competition", InteractType.RELATED_TO);
@@ -129,6 +130,12 @@ public class DatasetImporterForMangal extends DatasetImporterWithListener {
                 }
             }
         }
+        if (hasNonEmptyValueFor(singleNode, "id")) {
+            props.put(PropertyAndValueDictionary.NETWORK_ID, MANGAL_API_ENDPOINT + "/network/" + singleNode.get("id").asText());
+        }
+        if (hasNonEmptyValueFor(singleNode, "name")) {
+            props.put(PropertyAndValueDictionary.NETWORK_NAME, singleNode.get("name").asText());
+        }
         networkMap.put(singleNode.get("id").asText(), props);
     }
 
@@ -228,13 +235,13 @@ public class DatasetImporterForMangal extends DatasetImporterWithListener {
                 @Override
                 public void onNode(JsonNode node) throws StudyImporterException {
                     Map<String, String> interaction = parseInteraction(node, nodeMap, networkMap);
-                    interaction.put(STUDY_SOURCE_CITATION, getDataset().getCitation() + " " + CitationUtil.createLastAccessedString(MANGAL_API_ENDPOINT + "/network/" + interaction.get("mangal:network:id")));
+                    interaction.put(DATASET_CITATION, getDataset().getCitation() + " " + CitationUtil.createLastAccessedString(MANGAL_API_ENDPOINT + "/network/" + interaction.get("mangal:network:id")));
 
                     String interactionTypeName = interaction.get(DatasetImporterForTSV.INTERACTION_TYPE_NAME);
                     if (INTERACTION_TYPE_MAP.containsKey(interactionTypeName)) {
                         interaction.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, INTERACTION_TYPE_MAP.get(interactionTypeName).getIRI());
                     }
-                    getInteractionListener().newLink(interaction);
+                    getInteractionListener().on(interaction);
                 }
             }, 100, 0, MANGAL_API_ENDPOINT + "/interaction");
 

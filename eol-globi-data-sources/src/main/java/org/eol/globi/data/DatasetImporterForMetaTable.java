@@ -8,6 +8,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.LogContext;
 import org.eol.globi.domain.TaxonomyProvider;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.util.CSVTSVUtil;
 import org.eol.globi.util.ExternalIdUtil;
 import org.eol.globi.util.InteractTypeMapper;
@@ -29,7 +30,6 @@ import java.util.Map;
 
 import static org.eol.globi.data.DatasetImporterForTSV.REFERENCE_DOI;
 import static org.eol.globi.data.DatasetImporterForTSV.REFERENCE_URL;
-import static org.eol.globi.util.InteractUtil.*;
 
 public class DatasetImporterForMetaTable extends DatasetImporterWithListener {
 
@@ -59,15 +59,17 @@ public class DatasetImporterForMetaTable extends DatasetImporterWithListener {
                 Dataset datasetProxy = new DatasetProxy(dataset);
                 datasetProxy.setConfig(tableConfig);
 
-                InteractionListener interactionListener = new InteractionListenerWithInteractionTypeMapping(
-                        getInteractionListener(),
-                        createInteractionTypeMapperForImporter(datasetProxy),
-                        getLogger());
-                final InteractionListener listener = new TableInteractionListenerProxy(datasetProxy, interactionListener);
+                InteractionListener interactionListener = getInteractionListener();
+
+                final InteractionListener listener =
+                        new TableInteractionListenerProxy(datasetProxy, interactionListener);
+
                 importTable(listener, new TableParserFactoryImpl(), tableConfig, datasetProxy, getLogger());
             }
         } catch (IOException | NodeFactoryException e) {
-            throw new StudyImporterException("problem importing from [" + getBaseUrl() + "]", e);
+            String msg = "problem importing from [" + getBaseUrl() + "]";
+            LogUtil.logError(getLogger(), msg, e);
+            throw new StudyImporterException(msg, e);
         }
     }
 
@@ -201,7 +203,8 @@ public class DatasetImporterForMetaTable extends DatasetImporterWithListener {
 
     public static void importAll(InteractionListener interactionListener,
                                  List<Column> columnNames,
-                                 CSVParse csvParse, JsonNode config, ImportLogger importLogger) throws StudyImporterException {
+                                 CSVParse csvParse, JsonNode config,
+                                 ImportLogger importLogger) throws StudyImporterException {
         String[] line;
         Map<String, String> defaults = new TreeMap<>();
         final Map<String, String> sameAs = new TreeMap<String, String>() {{
@@ -265,7 +268,10 @@ public class DatasetImporterForMetaTable extends DatasetImporterWithListener {
                     msgs.forEach(x -> importLogger.warn(LogUtil.contextFor(mappedLine), x));
                 }
 
-                AssociatedTaxaUtil.expandNewLinkIfNeeded(interactionListener, mappedLine);
+                List<Map<String, String>> links = AssociatedTaxaUtil.expandIfNeeded(mappedLine);
+                for (Map<String, String> link : links) {
+                    interactionListener.on(link);
+                }
             }
         } catch (IOException e) {
             throw new StudyImporterException(e);

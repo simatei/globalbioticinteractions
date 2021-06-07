@@ -5,7 +5,7 @@
     <parent>
         <artifactId>eol-globi-parent</artifactId>
         <groupId>org.eol</groupId>
-        <version>0.4</version>
+        <version>0.21.3-SNAPSHOT</version>
         <relativePath>../eol-globi-parent/pom.xml</relativePath>
     </parent>
 
@@ -15,14 +15,14 @@
     <packaging>pom</packaging>
 
     <properties>
-        <globi.neo4j.index.version>0.6-SNAPSHOT</globi.neo4j.index.version>
-        <globi.taxa.version>0.3.27</globi.taxa.version>
+        <globi.neo4j.index.version>${parent.version}</globi.neo4j.index.version>
+        <globi.taxa.version>0.3.32</globi.taxa.version>
         <globi.tsv.version>1.0-SNAPSHOT</globi.tsv.version>
         <shapefiles.dir>${project.build.directory}/shapefiles</shapefiles.dir>
         <dataset.dir>change/me/in/pom.xml</dataset.dir>
         <data.dir>${project.build.directory}/data</data.dir>
         <neo4j.data.dir>${data.dir}/graph.db</neo4j.data.dir>
-        <wagon-maven-plugin.version>1.0</wagon-maven-plugin.version>
+        <wagon-maven-plugin.version>2.0.0</wagon-maven-plugin.version>
         <maven-assembly-plugin.version>3.1.0</maven-assembly-plugin.version>
     </properties>
 
@@ -90,16 +90,16 @@
                 <version>${wagon-maven-plugin.version}</version>
                 <configuration>
                     <serverId>globi-snapshot</serverId>
-                    <url>s3://globi/snapshot</url>
+                    <url>${globi.snapshot.repo.url}</url>
                     <skip>${skipTests}</skip>
                     <includes>
-                        **/*.nq.gz,**/sitemap/**,**/taxa/taxon*,**/tsv/interactions.tsv.gz,**/tsv/citations.tsv.gz,**/csv/interactions.csv.gz,**/csv/citations.csv.gz,**/${project.artifactId}-${project.version}*.tar.gz,**/${project.artifactId}-${project.version}*.zip
+                        **/*.nq.gz,**/sitemap/**,**/taxa/taxon*,**/tsv/interactions.tsv.gz,**/tsv/refuted-interactions.tsv.gz,**/tsv/citations.tsv.gz,**/csv/interactions.csv.gz,**/csv/refuted-interactions.csv.gz,**/csv/citations.csv.gz,**/${project.artifactId}-${project.version}*.tar.gz,**/${project.artifactId}-${project.version}*.zip
                     </includes>
                 </configuration>
                 <executions>
                     <execution>
                         <id>upload-datasets</id>
-                        <phase>deploy</phase>
+                        <phase>install</phase>
                         <goals>
                             <goal>upload</goal>
                         </goals>

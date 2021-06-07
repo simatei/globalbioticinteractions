@@ -17,6 +17,7 @@ import org.eol.globi.domain.StudyImpl;
 import org.eol.globi.domain.TaxonImpl;
 import org.eol.globi.domain.Term;
 import org.eol.globi.geo.LatLng;
+import org.eol.globi.process.InteractionListener;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -38,8 +39,8 @@ public class DatasetImporterForSPIRE extends NodeBasedImporter {
 
     private InteractionListener interactionListener = new InteractionListener() {
         @Override
-        public void newLink(Map<String, String> link) throws StudyImporterException {
-            importTrophicLink(link);
+        public void on(Map<String, String> interaction) throws StudyImporterException {
+            importTrophicLink(interaction);
         }
     };
 
@@ -104,7 +105,7 @@ public class DatasetImporterForSPIRE extends NodeBasedImporter {
             if (properties.containsKey(PREDATOR_NAME)
                     && properties.containsKey(PREY_NAME)
                     && getInteractionListener() != null) {
-                getInteractionListener().newLink(properties);
+                getInteractionListener().on(properties);
             }
             subjectCounter++;
         }

@@ -4,10 +4,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ObjectNode;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.ResourceService;
 import org.eol.globi.tool.NullImportLogger;
 import org.globalbioticinteractions.util.OpenBiodivClientImpl;
-import org.globalbioticinteractions.util.SparqlClientImpl;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
@@ -74,8 +74,8 @@ public class DatasetImporterForPensoftTest {
 
         parseRowsAndEnrich(getTableObj(), new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                links.add(link);
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                links.add(interaction);
             }
         }, new ResourceService() {
             @Override
@@ -95,9 +95,6 @@ public class DatasetImporterForPensoftTest {
         assertThat(links.size(), is(121));
 
         for (Map<String, String> link : links) {
-            link.forEach((x, y) ->
-                    System.out.println("[" + x + "]: [" + StringUtils.abbreviate(y, 80) + "]")
-            );
             assertThat(link.get("tableSchema"), is("{\"columns\":[{\"name\":\"Family Name\",\"titles\":\"Family Name\",\"datatype\":\"string\"},{\"name\":\"Host Plant\",\"titles\":\"Host Plant\",\"datatype\":\"string\"},{\"name\":\"Thrips species\",\"titles\":\"Thrips species\",\"datatype\":\"string\"},{\"name\":\"Family Name_expanded_taxon_id\",\"titles\":\"Family Name_expanded_taxon_id\",\"datatype\":\"string\"},{\"name\":\"Family Name_expanded_taxon_name\",\"titles\":\"Family Name_expanded_taxon_name\",\"datatype\":\"string\"},{\"name\":\"Host Plant_expanded_taxon_id\",\"titles\":\"Host Plant_expanded_taxon_id\",\"datatype\":\"string\"},{\"name\":\"Host Plant_expanded_taxon_name\",\"titles\":\"Host Plant_expanded_taxon_name\",\"datatype\":\"string\"},{\"name\":\"Thrips species_expanded_taxon_id\",\"titles\":\"Thrips species_expanded_taxon_id\",\"datatype\":\"string\"},{\"name\":\"Thrips species_expanded_taxon_name\",\"titles\":\"Thrips species_expanded_taxon_name\",\"datatype\":\"string\"}]}"));
         }
 

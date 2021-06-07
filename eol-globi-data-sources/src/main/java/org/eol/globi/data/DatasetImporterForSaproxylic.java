@@ -15,6 +15,7 @@ import com.hp.hpl.jena.rdf.model.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutableTriple;
 import org.apache.commons.lang3.tuple.Triple;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.util.CSVTSVUtil;
 import org.mapdb.DBMaker;
 
@@ -132,8 +133,8 @@ public class DatasetImporterForSaproxylic extends DatasetImporterWithListener {
                     props.put(key, next.getLiteral(key).getString());
                 }
             }
-            props.put(DatasetImporterForTSV.STUDY_SOURCE_CITATION, getDataset().getCitation());
-            listener.newLink(props);
+            props.put(DatasetImporterForTSV.DATASET_CITATION, getDataset().getCitation());
+            listener.on(props);
         }
     }
 

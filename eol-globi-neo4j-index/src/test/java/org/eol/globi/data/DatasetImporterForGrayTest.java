@@ -3,6 +3,7 @@ package org.eol.globi.data;
 import org.apache.commons.io.IOUtils;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.eol.globi.process.InteractionListener;
 import org.globalbioticinteractions.dataset.DatasetImpl;
 import org.eol.globi.service.TaxonUtil;
 import org.junit.Test;
@@ -17,7 +18,7 @@ import java.util.Map;
 import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.REFERENCE_CITATION;
-import static org.eol.globi.data.DatasetImporterForTSV.STUDY_SOURCE_CITATION;
+import static org.eol.globi.data.DatasetImporterForTSV.DATASET_CITATION;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -50,8 +51,8 @@ public class DatasetImporterForGrayTest extends GraphDBTestCase {
         gray.importLinks(IOUtils.toInputStream(firstFewLines(), StandardCharsets.UTF_8), new InteractionListener() {
 
             @Override
-            public void newLink(final Map<String, String> link) {
-                maps.add(link);
+            public void on(final Map<String, String> interaction) {
+                maps.add(interaction);
             }
         }, null);
         resolveNames();
@@ -73,8 +74,8 @@ public class DatasetImporterForGrayTest extends GraphDBTestCase {
     }
 
     private void assertStaticInfo(Map<String, String> firstLink) {
-        assertThat(firstLink.get(STUDY_SOURCE_CITATION), containsString("Gray C, Ma A, Perkins D, Hudson L, Figueroa D, Woodward G (2015). Database of trophic interactions. Zenodo. https://doi.org/10.5281/zenodo.13751."));
-        assertThat(firstLink.get(STUDY_SOURCE_CITATION), containsString(" Accessed at <http://example.com>"));
+        assertThat(firstLink.get(DATASET_CITATION), containsString("Gray C, Ma A, Perkins D, Hudson L, Figueroa D, Woodward G (2015). Database of trophic interactions. Zenodo. https://doi.org/10.5281/zenodo.13751."));
+        assertThat(firstLink.get(DATASET_CITATION), containsString(" Accessed at <http://example.com>"));
         assertThat(firstLink.get(REFERENCE_CITATION), containsString("Ledger"));
         assertThat(firstLink.get(INTERACTION_TYPE_ID), is("RO:0002470"));
         assertThat(firstLink.get(INTERACTION_TYPE_NAME), is("eats"));

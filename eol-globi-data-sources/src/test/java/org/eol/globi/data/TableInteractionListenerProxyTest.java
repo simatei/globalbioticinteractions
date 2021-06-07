@@ -2,8 +2,8 @@ package org.eol.globi.data;
 
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.eol.globi.process.InteractionListener;
 import org.globalbioticinteractions.dataset.DatasetImpl;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -27,14 +27,14 @@ public class TableInteractionListenerProxyTest {
         dataset.setConfig(config);
         final TableInteractionListenerProxy listener = new TableInteractionListenerProxy(dataset, new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                links.add(link);
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                links.add(interaction);
             }
         });
-        listener.newLink(new HashMap<>());
+        listener.on(new HashMap<>());
 
         assertThat(links.size(), is(1));
-        assertThat(links.get(0).get(DatasetImporterForTSV.STUDY_SOURCE_CITATION), startsWith("some citation. Accessed at <https://example.org/someResource> on "));
+        assertThat(links.get(0).get(DatasetImporterForTSV.DATASET_CITATION), startsWith("some citation. Accessed at <https://example.org/someResource> on "));
         assertThat(links.get(0).get(DatasetImporterForTSV.REFERENCE_CITATION), startsWith("some citation. Accessed at <https://example.org/someResource> on "));
     }
 
@@ -46,18 +46,18 @@ public class TableInteractionListenerProxyTest {
         dataset.setConfig(config);
         final TableInteractionListenerProxy listener = new TableInteractionListenerProxy(dataset, new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                links.add(link);
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                links.add(interaction);
             }
         });
-        listener.newLink(new HashMap<String, String>() {
+        listener.on(new HashMap<String, String>() {
             {
                 put(DatasetImporterForTSV.REFERENCE_CITATION, "some ref");
             }
         });
 
         assertThat(links.size(), is(1));
-        assertThat(links.get(0).get(DatasetImporterForTSV.STUDY_SOURCE_CITATION), startsWith("some citation. Accessed at <https://example.org/someResource> on "));
+        assertThat(links.get(0).get(DatasetImporterForTSV.DATASET_CITATION), startsWith("some citation. Accessed at <https://example.org/someResource> on "));
         assertThat(links.get(0).get(DatasetImporterForTSV.REFERENCE_CITATION), startsWith("some ref"));
     }
 

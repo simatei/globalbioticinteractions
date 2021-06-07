@@ -6,6 +6,7 @@ import com.Ostermiller.util.MD5;
 import org.apache.commons.lang3.StringUtils;
 import org.eol.globi.domain.TaxonomyProvider;
 import org.eol.globi.geo.LatLng;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.util.CSVTSVUtil;
 
 import java.io.IOException;
@@ -25,7 +26,7 @@ import static org.eol.globi.data.DatasetImporterForTSV.INTERACTION_TYPE_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.LOCALITY_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.REFERENCE_CITATION;
 import static org.eol.globi.data.DatasetImporterForTSV.REFERENCE_ID;
-import static org.eol.globi.data.DatasetImporterForTSV.STUDY_SOURCE_CITATION;
+import static org.eol.globi.data.DatasetImporterForTSV.DATASET_CITATION;
 import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_ID;
 import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_NAME;
 import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_ID;
@@ -78,7 +79,7 @@ public class DatasetImporterForSzoboszlai extends DatasetImporterWithListener {
         while (parser.getLine() != null) {
             Map<String, String> e = importLink(parser, localeMap);
             if (e != null) {
-                interactionListener.newLink(e);
+                interactionListener.on(e);
             }
         }
     }
@@ -86,7 +87,7 @@ public class DatasetImporterForSzoboszlai extends DatasetImporterWithListener {
     protected Map<String, String> importLink(LabeledCSVParser parser, Map<Integer, LatLng> localeMap) throws IOException, StudyImporterException {
         TreeMap<String, String> link = new TreeMap<String, String>();
 
-        link.put(STUDY_SOURCE_CITATION, getSourceCitationLastAccessed());
+        link.put(DATASET_CITATION, getSourceCitationLastAccessed());
 
         String predNum = StringUtils.trim(parser.getValueByLabel("PredatorSciNameTSN"));
         if (StringUtils.isNotBlank(predNum)) {

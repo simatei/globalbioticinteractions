@@ -1,6 +1,8 @@
 package org.eol.globi.data;
 
 import com.Ostermiller.util.LabeledCSVParser;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.domain.Environment;
@@ -12,31 +14,34 @@ import org.eol.globi.domain.Specimen;
 import org.eol.globi.domain.Study;
 import org.eol.globi.domain.Taxon;
 import org.eol.globi.domain.Term;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.AuthorIdResolver;
-import org.eol.globi.util.DatasetImportUtil;
+import org.eol.globi.service.TaxonUtil;
+import org.eol.globi.service.TermLookupService;
+import org.eol.globi.util.InteractionListenerIndexing;
+import org.eol.globi.util.InteractionListenerResolving;
 import org.globalbioticinteractions.dataset.Dataset;
 import org.globalbioticinteractions.dataset.DatasetConstant;
 import org.globalbioticinteractions.dataset.DatasetImpl;
-import org.eol.globi.service.TaxonUtil;
-import org.eol.globi.service.TermLookupService;
+import org.hamcrest.core.Is;
 import org.junit.Test;
 import org.mapdb.DBMaker;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertFalse;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 public class DatasetImporterForRSSTest {
@@ -45,13 +50,10 @@ public class DatasetImporterForRSSTest {
     public void readRSS() throws StudyImporterException, IOException {
         final Dataset dataset = getDatasetGroup();
 
-
         List<Dataset> datasets = DatasetImporterForRSS.getDatasetsForFeed(dataset);
         assertThat(datasets.size(), is(3));
         assertThat(datasets.get(0).getOrDefault("hasDependencies", null), is("false"));
-
     }
-
 
     @Test
     public void titleIncludeExcludePattern() throws StudyImporterException, IOException {
@@ -103,6 +105,23 @@ public class DatasetImporterForRSSTest {
         assertThat(datasets.get(0).getOrDefault("hasDependencies", null), is("true"));
     }
 
+
+    @Test
+    public void readDatasetDependencies() throws StudyImporterException, IOException {
+        String configJson = "{ \"url\": \"classpath:/org/eol/globi/data/rss_msb_para.xml\", " +
+                "\"hasDependencies\": true }";
+        final Dataset dataset = datasetFor(configJson);
+        List<Dataset> datasets = DatasetImporterForRSS.getDatasets(dataset);
+        assertThat(datasets.size(), is(1));
+
+        List<Dataset> dependencies = DatasetImporterForRSS.getDependencies(dataset);
+        assertThat(dependencies.size(), is(2));
+        assertThat(dependencies.get(0).getArchiveURI().toString(), is("http://ipt.vertnet.org:8080/ipt/archive.do?r=msb_para"));
+        assertThat(dependencies.get(0).getFormat(), is("application/dwca"));
+        assertThat(dependencies.get(1).getArchiveURI().toString(), is("http://ipt.vertnet.org:8080/ipt/archive.do?r=msb_host"));
+        assertThat(dependencies.get(1).getFormat(), is("foo"));
+    }
+
     @Test
     public void readRSSVertnetWithoutConfig() throws StudyImporterException, IOException {
         String configJson = "{ \"url\": \"classpath:/org/eol/globi/data/rss_vertnet.xml\" }";
@@ -142,33 +161,40 @@ public class DatasetImporterForRSSTest {
     @Test
     public void indexingInteractionListener() throws StudyImporterException {
 
-        TreeMap<String, Map<String, String>> index = new TreeMap<>();
-        DatasetImportUtil.IndexingInteractionListener indexingInteractionListener
-                = new DatasetImportUtil.IndexingInteractionListener(index);
+        TreeMap<Pair<String, String>, Map<String, String>> index = new TreeMap<Pair<String, String>, Map<String, String>>() {{
+            put(Pair.of(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "http://arctos.database.museum/guid/MVZ:Bird:180448"),
+                    Collections.emptyMap());
+        }};
+        InteractionListenerIndexing interactionListenerIndexing
+                = new InteractionListenerIndexing(index);
 
-        indexingInteractionListener.newLink(new TreeMap<String, String>() {{
+        interactionListenerIndexing.on(new TreeMap<String, String>() {{
             put(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "http://arctos.database.museum/guid/MVZ:Bird:180448?seid=587053");
+            put(TaxonUtil.SOURCE_TAXON_NAME, "someName");
             put(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "http://arctos.database.museum/guid/1234");
         }});
 
-        assertTrue(index.containsKey("http://arctos.database.museum/guid/MVZ:Bird:180448"));
+        Pair<String, String> queryKey = Pair.of(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "http://arctos.database.museum/guid/MVZ:Bird:180448");
+        assertTrue(index.containsKey(queryKey));
+        assertThat(index.get(queryKey).get(TaxonUtil.SOURCE_TAXON_NAME), Is.is("someName"));
     }
 
     @Test
     public void indexingInteractionListenerDBMaker() throws StudyImporterException {
 
-        final Map<String, Map<String, String>> index = DBMaker.newTempTreeMap();
+        final Map<Pair<String, String>, Map<String, String>> index = DBMaker.newTempTreeMap();
 
+        index.put(Pair.of(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "http://arctos.database.museum/guid/MVZ:Bird:180448"), Collections.emptyMap());
 
-        DatasetImportUtil.IndexingInteractionListener indexingInteractionListener
-                = new DatasetImportUtil.IndexingInteractionListener(index);
+        InteractionListenerIndexing interactionListenerIndexing
+                = new InteractionListenerIndexing(index);
 
-        indexingInteractionListener.newLink(new TreeMap<String, String>() {{
+        interactionListenerIndexing.on(new TreeMap<String, String>() {{
             put(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "http://arctos.database.museum/guid/MVZ:Bird:180448?seid=587053");
             put(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "http://arctos.database.museum/guid/1234");
         }});
 
-        assertTrue(index.containsKey("http://arctos.database.museum/guid/MVZ:Bird:180448"));
+        assertTrue(index.containsKey(Pair.of(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "http://arctos.database.museum/guid/MVZ:Bird:180448")));
     }
 
     @Test
@@ -178,117 +204,7 @@ public class DatasetImporterForRSSTest {
             public LabeledCSVParser createParser(URI studyResource, String characterEncoding) throws IOException {
                 return null;
             }
-        }, new NodeFactory() {
-            @Override
-            public Location findLocation(Location location) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Season createSeason(String seasonNameLower) {
-                return null;
-            }
-
-            @Override
-            public Specimen createSpecimen(Interaction interaction, Taxon taxon) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Specimen createSpecimen(Study study, Taxon taxon) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Specimen createSpecimen(Study study, Taxon taxon, RelTypes... types) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Study createStudy(Study study) {
-                return null;
-            }
-
-            @Override
-            public Study getOrCreateStudy(Study study) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Study findStudy(String title) {
-                return null;
-            }
-
-            @Override
-            public Season findSeason(String seasonName) {
-                return null;
-            }
-
-            @Override
-            public Location getOrCreateLocation(Location location) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public void setUnixEpochProperty(Specimen specimen, Date date) throws NodeFactoryException {
-
-            }
-
-            @Override
-            public Date getUnixEpochProperty(Specimen specimen) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public List<Environment> getOrCreateEnvironments(Location location, String externalId, String name) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public List<Environment> addEnvironmentToLocation(Location location, List<Term> terms) {
-                return null;
-            }
-
-            @Override
-            public Term getOrCreateBodyPart(String externalId, String name) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Term getOrCreatePhysiologicalState(String externalId, String name) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Term getOrCreateLifeStage(String externalId, String name) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public TermLookupService getTermLookupService() {
-                return null;
-            }
-
-            @Override
-            public AuthorIdResolver getAuthorResolver() {
-                return null;
-            }
-
-            @Override
-            public Term getOrCreateBasisOfRecord(String externalId, String name) throws NodeFactoryException {
-                return null;
-            }
-
-            @Override
-            public Dataset getOrCreateDataset(Dataset dataset) {
-                return null;
-            }
-
-            @Override
-            public Interaction createInteraction(Study study) throws NodeFactoryException {
-                return null;
-            }
-        }) {
+        }, new NodeFactoryNull()) {
             @Override
             public void importStudy() throws StudyImporterException {
                 //
@@ -299,26 +215,26 @@ public class DatasetImporterForRSSTest {
         final List<Map<String, String>> receivedLinks = new ArrayList<>();
         studyImporter.setInteractionListener(new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                receivedLinks.add(link);
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                receivedLinks.add(interaction);
             }
         });
-        TreeMap<String, Map<String, String>> interactionsWithUnresolvedOccurrenceIds = new TreeMap<String, Map<String, String>>() {{
-            put("1234", new TreeMap<String, String>() {
+        TreeMap<Pair<String, String>, Map<String, String>> interactionsWithUnresolvedOccurrenceIds = new TreeMap<Pair<String, String>, Map<String, String>>() {{
+            put(Pair.of(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "1234"), new TreeMap<String, String>() {
                 {
-                    put(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "1234");
-                    put(DatasetImporterForTSV.SOURCE_LIFE_STAGE_NAME, "lifeStageName");
-                    put(DatasetImporterForTSV.SOURCE_LIFE_STAGE_ID, "lifeStageId");
-                    put(DatasetImporterForTSV.SOURCE_BODY_PART_NAME, "bodyPartName");
-                    put(DatasetImporterForTSV.SOURCE_BODY_PART_ID, "bodyPartId");
-                    put(TaxonUtil.SOURCE_TAXON_NAME, "taxonName");
-                    put(TaxonUtil.SOURCE_TAXON_ID, "taxonId");
+                    put(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "1234");
+                    put(DatasetImporterForTSV.TARGET_LIFE_STAGE_NAME, "lifeStageName");
+                    put(DatasetImporterForTSV.TARGET_LIFE_STAGE_ID, "lifeStageId");
+                    put(DatasetImporterForTSV.TARGET_BODY_PART_NAME, "bodyPartName");
+                    put(DatasetImporterForTSV.TARGET_BODY_PART_ID, "bodyPartId");
+                    put(TaxonUtil.TARGET_TAXON_NAME, "taxonName");
+                    put(TaxonUtil.TARGET_TAXON_ID, "taxonId");
                 }
             });
         }};
-        DatasetImportUtil.EnrichingInteractionListener listener = new DatasetImportUtil.EnrichingInteractionListener(interactionsWithUnresolvedOccurrenceIds, studyImporter.getInteractionListener());
+        InteractionListenerResolving listener = new InteractionListenerResolving(interactionsWithUnresolvedOccurrenceIds, studyImporter.getInteractionListener());
 
-        listener.newLink(new TreeMap<String, String>() {{
+        listener.on(new TreeMap<String, String>() {{
             put(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "1234");
         }});
 
@@ -326,6 +242,64 @@ public class DatasetImporterForRSSTest {
         Map<String, String> received = receivedLinks.get(0);
         assertThat(received.get(TaxonUtil.TARGET_TAXON_NAME), is("taxonName"));
         assertThat(received.get(TaxonUtil.TARGET_TAXON_ID), is("taxonId"));
+        assertThat(received.get(DatasetImporterForTSV.TARGET_BODY_PART_NAME), is("bodyPartName"));
+        assertThat(received.get(DatasetImporterForTSV.TARGET_BODY_PART_ID), is("bodyPartId"));
+        assertThat(received.get(DatasetImporterForTSV.TARGET_LIFE_STAGE_NAME), is("lifeStageName"));
+        assertThat(received.get(DatasetImporterForTSV.TARGET_LIFE_STAGE_ID), is("lifeStageId"));
+
+
+    }
+
+    @Test()
+    public void enrichingInteractionListenerSourceOccurrence() throws StudyImporterException {
+        DatasetImporterWithListener studyImporter = new DatasetImporterWithListener(new ParserFactory() {
+            @Override
+            public LabeledCSVParser createParser(URI studyResource, String characterEncoding) throws IOException {
+                return null;
+            }
+        }, new NodeFactoryNull()) {
+            @Override
+            public void importStudy() throws StudyImporterException {
+                //
+            }
+        };
+
+
+        final List<Map<String, String>> receivedLinks = new ArrayList<>();
+        studyImporter.setInteractionListener(new InteractionListener() {
+            @Override
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                receivedLinks.add(interaction);
+            }
+        });
+        TreeMap<Pair<String, String>, Map<String, String>> interactionsWithUnresolvedOccurrenceIds = new TreeMap<Pair<String, String>, Map<String, String>>() {{
+            put(Pair.of(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "1234"), new TreeMap<String, String>() {
+                {
+
+                    put(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "1234");
+                    put(DatasetImporterForTSV.TARGET_LIFE_STAGE_NAME, "lifeStageName");
+                    put(DatasetImporterForTSV.TARGET_LIFE_STAGE_ID, "lifeStageId");
+                    put(DatasetImporterForTSV.TARGET_BODY_PART_NAME, "bodyPartName");
+                    put(DatasetImporterForTSV.TARGET_BODY_PART_ID, "bodyPartId");
+                    put(TaxonUtil.TARGET_TAXON_NAME, "taxonName");
+                    put(TaxonUtil.TARGET_TAXON_ID, "taxonId");
+                }
+            });
+        }};
+        InteractionListenerResolving listener = new InteractionListenerResolving(interactionsWithUnresolvedOccurrenceIds, studyImporter.getInteractionListener());
+
+        listener.on(new TreeMap<String, String>() {{
+            put(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID, "4567");
+            put(DatasetImporterForTSV.TARGET_OCCURRENCE_ID, "1234");
+
+        }});
+
+        assertThat(receivedLinks.size(), is(1));
+        Map<String, String> received = receivedLinks.get(0);
+        assertThat(received.get(DatasetImporterForTSV.SOURCE_OCCURRENCE_ID), is("4567"));
+        assertThat(received.get(TaxonUtil.TARGET_TAXON_NAME), is("taxonName"));
+        assertThat(received.get(TaxonUtil.TARGET_TAXON_ID), is("taxonId"));
+        assertThat(received.get(DatasetImporterForTSV.TARGET_OCCURRENCE_ID), is("1234"));
         assertThat(received.get(DatasetImporterForTSV.TARGET_BODY_PART_NAME), is("bodyPartName"));
         assertThat(received.get(DatasetImporterForTSV.TARGET_BODY_PART_ID), is("bodyPartId"));
         assertThat(received.get(DatasetImporterForTSV.TARGET_LIFE_STAGE_NAME), is("lifeStageName"));
@@ -373,4 +347,115 @@ public class DatasetImporterForRSSTest {
         assertThat(DatasetImporterForRSS.getRSSEndpoint(dataset), is("bar"));
     }
 
+    private static class NodeFactoryNull implements NodeFactory {
+        @Override
+        public Location findLocation(Location location) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Season createSeason(String seasonNameLower) {
+            return null;
+        }
+
+        @Override
+        public Specimen createSpecimen(Interaction interaction, Taxon taxon) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Specimen createSpecimen(Study study, Taxon taxon) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Specimen createSpecimen(Study study, Taxon taxon, RelTypes... types) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Study createStudy(Study study) {
+            return null;
+        }
+
+        @Override
+        public Study getOrCreateStudy(Study study) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Study findStudy(String title) {
+            return null;
+        }
+
+        @Override
+        public Season findSeason(String seasonName) {
+            return null;
+        }
+
+        @Override
+        public Location getOrCreateLocation(Location location) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public void setUnixEpochProperty(Specimen specimen, Date date) throws NodeFactoryException {
+
+        }
+
+        @Override
+        public Date getUnixEpochProperty(Specimen specimen) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public List<Environment> getOrCreateEnvironments(Location location, String externalId, String name) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public List<Environment> addEnvironmentToLocation(Location location, List<Term> terms) {
+            return null;
+        }
+
+        @Override
+        public Term getOrCreateBodyPart(String externalId, String name) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Term getOrCreatePhysiologicalState(String externalId, String name) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Term getOrCreateLifeStage(String externalId, String name) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public TermLookupService getTermLookupService() {
+            return null;
+        }
+
+        @Override
+        public AuthorIdResolver getAuthorResolver() {
+            return null;
+        }
+
+        @Override
+        public Term getOrCreateBasisOfRecord(String externalId, String name) throws NodeFactoryException {
+            return null;
+        }
+
+        @Override
+        public Dataset getOrCreateDataset(Dataset dataset) {
+            return null;
+        }
+
+        @Override
+        public Interaction createInteraction(Study study) throws NodeFactoryException {
+            return null;
+        }
+    }
 }

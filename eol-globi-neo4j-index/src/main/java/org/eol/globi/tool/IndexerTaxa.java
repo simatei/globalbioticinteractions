@@ -1,8 +1,8 @@
 package org.eol.globi.tool;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.eol.globi.db.GraphServiceFactory;
 import org.eol.globi.domain.Taxon;
 import org.eol.globi.opentree.OpenTreeTaxonIndex;
@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class IndexerTaxa implements IndexerNeo4j {
-    private static final Log LOG = LogFactory.getLog(IndexerTaxa.class);
+    private static final Logger LOG = LoggerFactory.getLogger(IndexerTaxa.class);
 
     private final TaxonCacheService taxonCacheService;
 
@@ -45,7 +45,7 @@ public class IndexerTaxa implements IndexerNeo4j {
 
             LOG.info("adding same and similar terms for resolved taxa...");
             List<IndexerNeo4j> linkers = new ArrayList<>();
-            appendOpenTreeTaxonLinker(linkers);
+            //appendOpenTreeTaxonLinker(linkers);
 
             linkers.forEach(x -> new IndexerTimed(x)
                     .index(graphService));
@@ -57,7 +57,7 @@ public class IndexerTaxa implements IndexerNeo4j {
         LOG.info("resolving names with taxon cache done.");
     }
 
-    public static void appendOpenTreeTaxonLinker(List<IndexerNeo4j> linkers) {
+    private static void appendOpenTreeTaxonLinker(List<IndexerNeo4j> linkers) {
         String ottUrl = System.getProperty("ott.url");
         try {
             if (StringUtils.isNotBlank(ottUrl)) {

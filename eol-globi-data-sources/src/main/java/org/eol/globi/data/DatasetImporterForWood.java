@@ -4,6 +4,7 @@ import com.Ostermiller.util.LabeledCSVParser;
 import org.apache.commons.lang3.StringUtils;
 import org.eol.globi.domain.Term;
 import org.eol.globi.geo.LatLng;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.TaxonUtil;
 import org.eol.globi.util.CSVTSVUtil;
 
@@ -34,7 +35,7 @@ public class DatasetImporterForWood extends DatasetImporterWithListener {
         while ((filter == null || filter.shouldImportRecord((long) parser.lastLineNumber())) && parser.getLine() != null) {
             Map<String, String> e = importLink(parser);
             if (e != null) {
-                interactionListener.newLink(e);
+                interactionListener.on(e);
             }
         }
     }
@@ -46,7 +47,7 @@ public class DatasetImporterForWood extends DatasetImporterWithListener {
         link.put(TaxonUtil.SOURCE_TAXON_NAME, parser.getValueByLabel("PredName"));
         addTSN(parser, link, "PreyTSN", TaxonUtil.TARGET_TAXON_ID);
         link.put(TaxonUtil.TARGET_TAXON_NAME, parser.getValueByLabel("PreyName"));
-        link.put(DatasetImporterForTSV.STUDY_SOURCE_CITATION, getSourceCitationLastAccessed());
+        link.put(DatasetImporterForTSV.DATASET_CITATION, getSourceCitationLastAccessed());
         link.put(DatasetImporterForTSV.REFERENCE_CITATION, getSourceCitation());
         link.put(DatasetImporterForTSV.REFERENCE_ID, getSourceDOI().toPrintableDOI());
         link.put(DatasetImporterForTSV.REFERENCE_DOI, getSourceDOI().toString());

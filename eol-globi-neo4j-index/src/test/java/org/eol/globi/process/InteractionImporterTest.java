@@ -1,5 +1,10 @@
-package org.eol.globi.data;
+package org.eol.globi.process;
 
+import org.eol.globi.data.DatasetImporterForMetaTable;
+import org.eol.globi.data.DatasetImporterForTSV;
+import org.eol.globi.data.GraphDBTestCase;
+import org.eol.globi.data.NodeFactoryException;
+import org.eol.globi.data.StudyImporterException;
 import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.LocationNode;
 import org.eol.globi.domain.LogContext;
@@ -14,8 +19,6 @@ import org.eol.globi.tool.NullImportLogger;
 import org.eol.globi.util.DateUtil;
 import org.eol.globi.util.NodeTypeDirection;
 import org.eol.globi.util.NodeUtil;
-import org.joda.time.DateTime;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
@@ -25,20 +28,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.TreeMap;
 import java.util.List;
-import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Predicate;
 
-import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_COLLECTION_ID;
-import static org.eol.globi.data.DatasetImporterForTSV.TARGET_COLLECTION_ID;
-import static org.eol.globi.domain.PropertyAndValueDictionary.COLLECTION_ID;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_PATH_IDS;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_RANK;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_SPECIFIC_EPITHET;
 import static org.eol.globi.data.DatasetImporterForTSV.ARGUMENT_TYPE_ID;
+import static org.eol.globi.data.DatasetImporterForTSV.DATASET_CITATION;
 import static org.eol.globi.data.DatasetImporterForTSV.DECIMAL_LATITUDE;
 import static org.eol.globi.data.DatasetImporterForTSV.DECIMAL_LONGITUDE;
 import static org.eol.globi.data.DatasetImporterForTSV.LOCALITY_ID;
@@ -50,47 +46,177 @@ import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_BODY_PART_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_BODY_PART_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_CATALOG_NUMBER;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_COLLECTION_CODE;
+import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_COLLECTION_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_INSTITUTION_CODE;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_LIFE_STAGE_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_LIFE_STAGE_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_OCCURRENCE_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_SEX_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.SOURCE_SEX_NAME;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_ID;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_NAME;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_PATH;
-import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_PATH_NAMES;
-import static org.eol.globi.data.DatasetImporterForTSV.STUDY_SOURCE_CITATION;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_BODY_PART_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_BODY_PART_NAME;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_CATALOG_NUMBER;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_COLLECTION_CODE;
+import static org.eol.globi.data.DatasetImporterForTSV.TARGET_COLLECTION_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_INSTITUTION_CODE;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_OCCURRENCE_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_SEX_ID;
 import static org.eol.globi.data.DatasetImporterForTSV.TARGET_SEX_NAME;
-import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_ID;
-import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_NAME;
 import static org.eol.globi.domain.PropertyAndValueDictionary.CATALOG_NUMBER;
 import static org.eol.globi.domain.PropertyAndValueDictionary.COLLECTION_CODE;
+import static org.eol.globi.domain.PropertyAndValueDictionary.COLLECTION_ID;
 import static org.eol.globi.domain.PropertyAndValueDictionary.INSTITUTION_CODE;
 import static org.eol.globi.domain.PropertyAndValueDictionary.OCCURRENCE_ID;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_ID;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_NAME;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_PATH;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_PATH_IDS;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_PATH_NAMES;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_RANK;
+import static org.eol.globi.service.TaxonUtil.SOURCE_TAXON_SPECIFIC_EPITHET;
+import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_ID;
+import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_NAME;
 import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_PATH_IDS;
 import static org.eol.globi.service.TaxonUtil.TARGET_TAXON_RANK;
-import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsNull.notNullValue;
 import static org.hamcrest.core.StringStartsWith.startsWith;
 import static org.junit.Assert.assertFalse;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-public class InteractionListenerImplTest extends GraphDBTestCase {
+public class InteractionImporterTest extends GraphDBTestCase {
+
+    @Test
+    public void malformedDOI() {
+        final List<String> msgs = new ArrayList<>();
+        InteractionListener interactionListener = new InteractionImporter(nodeFactory, new GeoNamesService() {
+
+            @Override
+            public boolean hasTermForLocale(String locality) {
+                return true;
+            }
+
+            @Override
+            public LatLng findLatLng(String locality) throws IOException {
+                throw new IOException("kaboom!");
+            }
+        }, new NullImportLogger() {
+            @Override
+            public void warn(LogContext ctx, String message) {
+                msgs.add(message);
+            }
+
+        });
+
+        final TreeMap<String, String> link = new TreeMap<>();
+        link.put(SOURCE_TAXON_NAME, "donald");
+        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
+        link.put(TARGET_TAXON_NAME, "mini");
+        link.put(REFERENCE_ID, "123");
+        link.put(DATASET_CITATION, "some source ref");
+        link.put(REFERENCE_CITATION, "");
+        link.put(REFERENCE_DOI, "bla:XXX");
+        try {
+            interactionListener.on(link);
+            assertThat(msgs.size(), is(1));
+            assertThat(msgs.get(0), startsWith("found malformed doi [bla:XXX]"));
+        } catch (StudyImporterException ex) {
+            fail("should not throw on failing geoname lookup");
+        }
+    }
+
+    @Test
+    public void malformedDateRange() {
+        final List<String> msgs = new ArrayList<>();
+        InteractionListener interactionListener = new InteractionImporter(
+                nodeFactory, new GeoNamesService() {
+
+            @Override
+            public boolean hasTermForLocale(String locality) {
+                return true;
+            }
+
+            @Override
+            public LatLng findLatLng(String locality) throws IOException {
+                throw new IOException("kaboom!");
+            }
+        }, new NullImportLogger() {
+            @Override
+            public void warn(LogContext ctx, String message) {
+                msgs.add(message);
+            }
+
+        });
+
+        final TreeMap<String, String> link = new TreeMap<>();
+        link.put(SOURCE_TAXON_NAME, "donald");
+        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
+        link.put(TARGET_TAXON_NAME, "mini");
+        link.put(REFERENCE_ID, "123");
+        link.put(DATASET_CITATION, "some source ref");
+        link.put(REFERENCE_CITATION, "");
+        link.put(REFERENCE_DOI, "10.12/123");
+        link.put(DatasetImporterForMetaTable.EVENT_DATE, "2009-09/2003-09");
+        try {
+            interactionListener.on(link);
+            assertThat(msgs.size(), is(2));
+            assertThat(msgs.get(0), startsWith("date range [2009-09/2003-09] appears to start after it ends."));
+            assertThat(msgs.get(1), startsWith("date range [2009-09/2003-09] appears to start after it ends."));
+        } catch (StudyImporterException ex) {
+            fail("should not throw on failing geoname lookup");
+        }
+    }
+
+
+    @Test
+    public void throwingGeoNamesService() {
+        final List<String> msgs = new ArrayList<>();
+        InteractionListener interactionListener = new InteractionImporter(nodeFactory, new GeoNamesService() {
+
+            @Override
+            public boolean hasTermForLocale(String locality) {
+                return true;
+            }
+
+            @Override
+            public LatLng findLatLng(String locality) throws IOException {
+                throw new IOException("kaboom!");
+            }
+        }, new NullImportLogger() {
+            @Override
+            public void warn(LogContext ctx, String message) {
+                msgs.add(message);
+            }
+        });
+
+        final TreeMap<String, String> link = new TreeMap<>();
+        link.put(SOURCE_TAXON_NAME, "donald");
+        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
+        link.put(TARGET_TAXON_NAME, "mini");
+        link.put(LOCALITY_ID, "bla:123");
+        link.put(LOCALITY_NAME, "my back yard");
+        link.put(REFERENCE_ID, "123");
+        link.put(DATASET_CITATION, "some source ref");
+        link.put(REFERENCE_CITATION, "");
+        try {
+            interactionListener.on(link);
+            assertThat(msgs.size(), is(1));
+            assertThat(msgs.get(0), startsWith("failed to lookup [bla:123]"));
+        } catch (StudyImporterException ex) {
+            fail("should not throw on failing geoname lookup");
+        }
+    }
+
 
     @Test
     public void importBlankCitation() throws StudyImporterException {
-        final InteractionListenerImpl listener = new InteractionListenerImpl(nodeFactory, null, null);
+        final InteractionListener listener = new InteractionImporter(
+                nodeFactory,
+                (GeoNamesService) null,
+                null);
+
         final TreeMap<String, String> link = new TreeMap<String, String>();
         link.put(SOURCE_OCCURRENCE_ID, "123");
         link.put(SOURCE_CATALOG_NUMBER, "catalogNumber123");
@@ -117,10 +243,10 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
         link.put(DatasetImporterForMetaTable.LONGITUDE, "13.2");
         link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
         link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
+        link.put(DATASET_CITATION, "some source ref");
         link.put(REFERENCE_CITATION, "");
         link.put(REFERENCE_DOI, "doi:1234");
-        listener.newLink(link);
+        listener.on(link);
 
         final AtomicBoolean foundPair = new AtomicBoolean(false);
         NodeUtil.RelationshipListener relationshipListener = relationship -> {
@@ -178,8 +304,8 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
         NodeUtil.handleCollectedRelationships(new NodeTypeDirection(study.getUnderlyingNode(), collected), handler, 1);
     }
 
-    public InteractionListenerImpl getAssertingListener() {
-        return new InteractionListenerImpl(nodeFactory, null, new NullImportLogger() {
+    private InteractionListener getAssertingInteractionImporter() {
+        return new InteractionImporter(nodeFactory, new NullImportLogger() {
             @Override
             public void warn(LogContext ctx, String message) {
                 fail("got message: " + message);
@@ -189,12 +315,12 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
             public void severe(LogContext ctx, String message) {
                 fail("got message: " + message);
             }
-        });
+        }, null);
     }
 
     @Test
     public void importRefutingClaim() throws StudyImporterException {
-        final InteractionListenerImpl listener = getAssertingListener();
+        final InteractionListener listener = getAssertingInteractionImporter();
         final TreeMap<String, String> link = new TreeMap<>();
         link.put(SOURCE_TAXON_NAME, "donald");
         link.put(SOURCE_TAXON_ID, "duck");
@@ -203,10 +329,10 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
         link.put(TARGET_TAXON_ID, "mouse");
         link.put(ARGUMENT_TYPE_ID, "https://en.wiktionary.org/wiki/refute");
         link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
+        link.put(DATASET_CITATION, "some source ref");
         link.put(REFERENCE_CITATION, "");
         link.put(REFERENCE_DOI, "doi:10.12/34");
-        listener.newLink(link);
+        listener.on(link);
 
         AtomicBoolean foundSpecimen = new AtomicBoolean(false);
         NodeUtil.RelationshipListener relHandler = relationship -> {
@@ -222,7 +348,7 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
 
     @Test
     public void importWithLocalityAndLatLng() throws StudyImporterException {
-        final InteractionListenerImpl listener = getAssertingListener();
+        final InteractionListener listener = getAssertingInteractionImporter();
         final TreeMap<String, String> link = new TreeMap<>();
         link.put(SOURCE_TAXON_NAME, "donald");
         link.put(SOURCE_TAXON_ID, "duck");
@@ -234,10 +360,10 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
         link.put(DECIMAL_LATITUDE, "12.2");
         link.put(DECIMAL_LONGITUDE, "13.2");
         link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
+        link.put(DATASET_CITATION, "some source ref");
         link.put(REFERENCE_CITATION, "");
         link.put(REFERENCE_DOI, "doi:10.12/34");
-        listener.newLink(link);
+        listener.on(link);
 
         AtomicBoolean foundSpecimen = new AtomicBoolean(false);
         NodeUtil.RelationshipListener someListener = relationship -> {
@@ -258,7 +384,7 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
 
     @Test
     public void importWithSex() throws StudyImporterException {
-        final InteractionListenerImpl listener = getAssertingListener();
+        final InteractionListener listener = getAssertingInteractionImporter();
         final TreeMap<String, String> link = new TreeMap<>();
         link.put(SOURCE_TAXON_NAME, "donald");
         link.put(SOURCE_SEX_NAME, "female");
@@ -267,10 +393,10 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
         link.put(TARGET_TAXON_NAME, "mini");
         link.put(TARGET_SEX_NAME, "male");
         link.put(TARGET_SEX_ID, "some:male");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
+        link.put(DATASET_CITATION, "some source ref");
         link.put(REFERENCE_ID, "123");
         link.put(REFERENCE_CITATION, "");
-        listener.newLink(link);
+        listener.on(link);
 
         AtomicInteger foundSpecimen = new AtomicInteger(0);
         NodeUtil.RelationshipListener someListener = relationship -> {
@@ -295,7 +421,7 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
 
     @Test
     public void importWithTaxonHierarchy() throws StudyImporterException {
-        final InteractionListenerImpl listener = getAssertingListener();
+        final InteractionListener listener = getAssertingInteractionImporter();
         final TreeMap<String, String> link = new TreeMap<>();
         link.put(SOURCE_TAXON_NAME, "Donald duck");
         link.put(SOURCE_TAXON_RANK, "species");
@@ -307,10 +433,10 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
         link.put(TARGET_TAXON_NAME, "mini");
         link.put(TARGET_TAXON_RANK, "species");
         link.put(TARGET_TAXON_PATH_IDS, "miniId");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
+        link.put(DATASET_CITATION, "some source ref");
         link.put(REFERENCE_ID, "123");
         link.put(REFERENCE_CITATION, "");
-        listener.newLink(link);
+        listener.on(link);
 
         AtomicInteger foundSpecimen = new AtomicInteger(0);
         NodeUtil.RelationshipListener someListener = relationship -> {
@@ -341,113 +467,6 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
     }
 
     @Test
-    public void importWithMissingTargetTaxonButAvailableInstitutionCollectionCatalogTriple() throws StudyImporterException {
-        List<String> msgs = new ArrayList<>();
-        final InteractionListenerImpl listener = new InteractionListenerImpl(nodeFactory, null, new NullImportLogger() {
-            @Override
-            public void info(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-
-            @Override
-            public void warn(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-
-            @Override
-            public void severe(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-        });
-        final TreeMap<String, String> link = new TreeMap<>();
-        link.put(SOURCE_TAXON_NAME, "Donald duck");
-        link.put(SOURCE_TAXON_PATH, "Aves | Donald | Donald duck");
-        link.put(SOURCE_TAXON_PATH_NAMES, "class | genus | species");
-        link.put(SOURCE_TAXON_SPECIFIC_EPITHET, "duck");
-        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, InteractType.ATE.getIRI());
-        link.put(TARGET_OCCURRENCE_ID, "occurrenceId123");
-        link.put(TARGET_INSTITUTION_CODE, "institutionCode123");
-        link.put(TARGET_COLLECTION_CODE, "collectionCode123");
-        link.put(TARGET_COLLECTION_ID, "collectionId123");
-        link.put(TARGET_CATALOG_NUMBER, "catalogNumber123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
-        link.put(REFERENCE_ID, "123");
-        link.put(REFERENCE_CITATION, "");
-
-        listener.newLink(link);
-        assertThat(msgs, hasItem("target taxon name missing: using institutionCode/collectionCode/collectionId/catalogNumber/occurrenceId as placeholder"));
-
-        final AtomicBoolean foundPair = new AtomicBoolean(false);
-        NodeUtil.RelationshipListener relationshipListener = relationship -> {
-            final SpecimenNode predator = new SpecimenNode(relationship.getEndNode());
-            for (Relationship stomachRel : NodeUtil.getStomachContents(predator)) {
-                final SpecimenNode prey = new SpecimenNode(stomachRel.getEndNode());
-                final TaxonNode preyTaxon = getOrigTaxon(prey);
-
-                assertThat(preyTaxon.getName(), is("institutionCode123 | collectionCode123 | collectionId123 | catalogNumber123 | occurrenceId123"));
-                foundPair.set(true);
-            }
-        };
-
-
-        handleRelations(relationshipListener, RelTypes.COLLECTED);
-        assertThat(foundPair.get(), is(true));
-
-    }
-
-    @Test
-    public void importWithMissingSourceTaxonButAvailableInstitutionCollectionCatalogTriple() throws StudyImporterException {
-        List<String> msgs = new ArrayList<>();
-        final InteractionListenerImpl listener = new InteractionListenerImpl(nodeFactory, null, new NullImportLogger() {
-            @Override
-            public void info(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-
-            @Override
-            public void warn(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-
-            @Override
-            public void severe(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-        });
-        final TreeMap<String, String> link = new TreeMap<>();
-        link.put(TARGET_TAXON_NAME, "Donald duck");
-        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, InteractType.ATE.getIRI());
-        link.put(SOURCE_OCCURRENCE_ID, "occurrenceId123");
-        link.put(SOURCE_INSTITUTION_CODE, "institutionCode123");
-        link.put(SOURCE_COLLECTION_CODE, "collectionCode123");
-        link.put(SOURCE_COLLECTION_ID, "collectionId123");
-        link.put(SOURCE_CATALOG_NUMBER, "catalogNumber123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
-        link.put(REFERENCE_ID, "123");
-        link.put(REFERENCE_CITATION, "");
-
-        listener.newLink(link);
-        assertThat(msgs, hasItem("source taxon name missing: using institutionCode/collectionCode/collectionId/catalogNumber/occurrenceId as placeholder"));
-
-        final AtomicBoolean foundPair = new AtomicBoolean(false);
-        NodeUtil.RelationshipListener relationshipListener = relationship -> {
-            final SpecimenNode predator = new SpecimenNode(relationship.getEndNode());
-            for (Relationship stomachRel : NodeUtil.getStomachContents(predator)) {
-                final SpecimenNode pred = new SpecimenNode(stomachRel.getStartNode());
-                final TaxonNode predTaxon = getOrigTaxon(predator);
-
-                assertThat(predTaxon.getName(), is("institutionCode123 | collectionCode123 | collectionId123 | catalogNumber123 | occurrenceId123"));
-                foundPair.set(true);
-            }
-        };
-
-
-        handleRelations(relationshipListener, RelTypes.COLLECTED);
-        assertThat(foundPair.get(), is(true));
-
-    }
-
-    @Test
     public void importWithSymbiotaDateTimeYearOnly() throws StudyImporterException {
         assertSymbiotaDateString("2016-00-00", "2016-01-01T00:00:00Z");
     }
@@ -468,16 +487,16 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
     }
 
     public void assertSymbiotaDateString(String symbiotaTime, String expectedUTC) throws StudyImporterException {
-        final InteractionListenerImpl listener = getAssertingListener();
+        final InteractionListener listener = getAssertingInteractionImporter();
         final TreeMap<String, String> link = new TreeMap<>();
         link.put(SOURCE_TAXON_NAME, "donald");
         link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
         link.put(TARGET_TAXON_NAME, "mini");
         link.put(DatasetImporterForMetaTable.EVENT_DATE, symbiotaTime);
         link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
+        link.put(DATASET_CITATION, "some source ref");
         link.put(REFERENCE_CITATION, "");
-        listener.newLink(link);
+        listener.on(link);
 
         AtomicBoolean foundSpecimen = new AtomicBoolean(false);
         NodeUtil.RelationshipListener someListener = relationship -> {
@@ -510,171 +529,23 @@ public class InteractionListenerImplTest extends GraphDBTestCase {
     }
 
     @Test
-    public void interactionTypePredicateMissing() {
-        Predicate<Map<String, String>> interactionTypePredicate =
-                InteractionListenerImpl.createInteractionTypePredicate(null);
-
-        assertThat(interactionTypePredicate.test(new TreeMap<String, String>()), is(false));
-    }
-
-    @Test
-    public void interactionTypePredicateInvalid() {
-        Predicate<Map<String, String>> interactionTypePredicate =
-                InteractionListenerImpl.createInteractionTypePredicate(null);
-
-        assertThat(interactionTypePredicate.test(new TreeMap<String, String>() {{
-            put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "bla");
-        }}), is(false));
-    }
-
-    @Test
-    public void interactionTypePredicateValid() {
-        Predicate<Map<String, String>> interactionTypePredicate =
-                InteractionListenerImpl.createInteractionTypePredicate(null);
-
-        assertThat(interactionTypePredicate.test(new TreeMap<String, String>() {{
-            put(DatasetImporterForTSV.INTERACTION_TYPE_ID, InteractType.INTERACTS_WITH.getIRI());
-        }}), is(true));
-    }
-
-    @Test
-    public void throwingGeoNamesService() throws StudyImporterException {
-        final List<String> msgs = new ArrayList<>();
-        InteractionListenerImpl interactionListener = new InteractionListenerImpl(nodeFactory, new GeoNamesService() {
-
-            @Override
-            public boolean hasTermForLocale(String locality) {
-                return true;
-            }
-
-            @Override
-            public LatLng findLatLng(String locality) throws IOException {
-                throw new IOException("kaboom!");
-            }
-        }, new NullImportLogger() {
-            @Override
-            public void warn(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-        });
-
-        final TreeMap<String, String> link = new TreeMap<>();
-        link.put(SOURCE_TAXON_NAME, "donald");
-        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
-        link.put(TARGET_TAXON_NAME, "mini");
-        link.put(LOCALITY_ID, "bla:123");
-        link.put(LOCALITY_NAME, "my back yard");
-        link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
-        link.put(REFERENCE_CITATION, "");
-        try {
-            interactionListener.newLink(link);
-            assertThat(msgs.size(), is(1));
-            assertThat(msgs.get(0), startsWith("failed to lookup [bla:123]"));
-        } catch (StudyImporterException ex) {
-            fail("should not throw on failing geoname lookup");
-        }
-    }
-
-    @Test
-    public void malformedDOI() {
-        final List<String> msgs = new ArrayList<>();
-        InteractionListenerImpl interactionListener = new InteractionListenerImpl(nodeFactory, new GeoNamesService() {
-
-            @Override
-            public boolean hasTermForLocale(String locality) {
-                return true;
-            }
-
-            @Override
-            public LatLng findLatLng(String locality) throws IOException {
-                throw new IOException("kaboom!");
-            }
-        }, new NullImportLogger() {
-            @Override
-            public void warn(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-
-        });
-
-        final TreeMap<String, String> link = new TreeMap<>();
-        link.put(SOURCE_TAXON_NAME, "donald");
-        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
-        link.put(TARGET_TAXON_NAME, "mini");
-        link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
-        link.put(REFERENCE_CITATION, "");
-        link.put(REFERENCE_DOI, "bla:XXX");
-        try {
-            interactionListener.newLink(link);
-            assertThat(msgs.size(), is(1));
-            assertThat(msgs.get(0), startsWith("found malformed doi [bla:XXX]"));
-        } catch (StudyImporterException ex) {
-            fail("should not throw on failing geoname lookup");
-        }
-    }
-
-
-    @Test
-    public void malformedDateRange() {
-        final List<String> msgs = new ArrayList<>();
-        InteractionListenerImpl interactionListener = new InteractionListenerImpl(nodeFactory, new GeoNamesService() {
-
-            @Override
-            public boolean hasTermForLocale(String locality) {
-                return true;
-            }
-
-            @Override
-            public LatLng findLatLng(String locality) throws IOException {
-                throw new IOException("kaboom!");
-            }
-        }, new NullImportLogger() {
-            @Override
-            public void warn(LogContext ctx, String message) {
-                msgs.add(message);
-            }
-
-        });
-
-        final TreeMap<String, String> link = new TreeMap<>();
-        link.put(SOURCE_TAXON_NAME, "donald");
-        link.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, "http://purl.obolibrary.org/obo/RO_0002470");
-        link.put(TARGET_TAXON_NAME, "mini");
-        link.put(REFERENCE_ID, "123");
-        link.put(STUDY_SOURCE_CITATION, "some source ref");
-        link.put(REFERENCE_CITATION, "");
-        link.put(REFERENCE_DOI, "10.12/123");
-        link.put(DatasetImporterForMetaTable.EVENT_DATE, "2009-09/2003-09");
-        try {
-            interactionListener.newLink(link);
-            assertThat(msgs.size(), is(2));
-            assertThat(msgs.get(0), startsWith("date range [2009-09/2003-09] appears to start after it ends."));
-            assertThat(msgs.get(1), startsWith("date range [2009-09/2003-09] appears to start after it ends."));
-        } catch (StudyImporterException ex) {
-            fail("should not throw on failing geoname lookup");
-        }
-    }
-
-    @Test
     public void startDateEndDateYearMonth() {
-        assertFalse(InteractionListenerImpl.hasStartDateAfterEndDate("2006-07/08"));
+        assertFalse(InteractionImporter.hasStartDateAfterEndDate("2006-07/08"));
     }
 
     @Test
     public void startedMonthAfterEnding() {
-        assertTrue(InteractionListenerImpl.hasStartDateAfterEndDate("2006-09/08"));
+        assertTrue(InteractionImporter.hasStartDateAfterEndDate("2006-09/08"));
     }
 
     @Test
     public void startDateEndDateYearMonth2() {
-        assertFalse(InteractionListenerImpl.hasStartDateAfterEndDate("2006-07/2006-08"));
+        assertFalse(InteractionImporter.hasStartDateAfterEndDate("2006-07/2006-08"));
     }
 
     @Test
     public void startAfterEnding() {
-        assertTrue(InteractionListenerImpl.hasStartDateAfterEndDate("2008-07/2006-08"));
+        assertTrue(InteractionImporter.hasStartDateAfterEndDate("2008-07/2006-08"));
     }
 
 }

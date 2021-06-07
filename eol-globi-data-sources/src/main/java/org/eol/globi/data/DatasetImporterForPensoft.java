@@ -11,6 +11,7 @@ import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.ObjectNode;
 import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.Term;
+import org.eol.globi.process.InteractionListener;
 import org.globalbioticinteractions.doi.DOI;
 import org.globalbioticinteractions.doi.MalformedDOIException;
 import org.globalbioticinteractions.pensoft.AddColumnFromCaption;
@@ -211,7 +212,7 @@ public class DatasetImporterForPensoft extends DatasetImporterWithListener {
                 for (int i = 0; i < rowColumns.size(); i++) {
                     link.put(columns.get(i).getName(), rowColumns.get(i).text());
                 }
-                listener.newLink(link);
+                listener.on(link);
 
             }
         }

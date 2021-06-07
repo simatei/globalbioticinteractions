@@ -4,8 +4,9 @@ import com.univocity.parsers.common.record.Record;
 import com.univocity.parsers.tsv.TsvParser;
 import com.univocity.parsers.tsv.TsvParserSettings;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.eol.globi.process.InteractionListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.TaxonomyProvider;
 import org.eol.globi.service.TaxonUtil;
@@ -21,7 +22,7 @@ import java.util.TreeMap;
 import static org.eol.globi.data.DatasetImporterForHurlbert.columnValueOrNull;
 
 public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
-    private static final Log LOG = LogFactory.getLog(DatasetImporterForFishbase3.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DatasetImporterForFishbase3.class);
     public static final String C_CODE_GLOBAL = "9999";
 
     public DatasetImporterForFishbase3(ParserFactory parserFactory, NodeFactory nodeFactory) {
@@ -45,9 +46,9 @@ public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
                 private final InteractionListener listener = getInteractionListener();
 
                 @Override
-                public void newLink(Map<String, String> link) throws StudyImporterException {
-                    listener.newLink(new TreeMap<String, String>(link) {{
-                        put(DatasetImporterForTSV.STUDY_SOURCE_CITATION, getSourceCitationLastAccessed());
+                public void on(Map<String, String> interaction) throws StudyImporterException {
+                    listener.on(new TreeMap<String, String>(interaction) {{
+                        put(DatasetImporterForTSV.DATASET_CITATION, getSourceCitationLastAccessed());
                     }});
                 }
             };
@@ -149,7 +150,7 @@ public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
         RecordListener listener = record -> {
             Map<String, String> props = generateFoodItemInteraction(speciesMap, references, countries, namespace, record, "Foodname");
             appendTargetSpeciesInfo(record, props);
-            interactionListener.newLink(props);
+            interactionListener.on(props);
         };
         handleTsvInputStream(listener, is);
     }
@@ -157,7 +158,7 @@ public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
     protected static void importFoodItemsByFoodII(InteractionListener interactionListener, InputStream is, Map<String, Map<String, String>> speciesMap, Map<String, Map<String, String>> references, Map<String, Map<String, String>> countries, String namespace) throws StudyImporterException {
         RecordListener listener = record -> {
             Map<String, String> props = generateFoodItemInteraction(speciesMap, references, countries, namespace, record, "FoodII");
-            interactionListener.newLink(props);
+            interactionListener.on(props);
         };
         handleTsvInputStream(listener, is);
     }
@@ -259,7 +260,7 @@ public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
             InteractType interactType = InteractType.PREYS_UPON;
             props.put(DatasetImporterForTSV.INTERACTION_TYPE_NAME, interactType.getLabel());
             props.put(DatasetImporterForTSV.INTERACTION_TYPE_ID, interactType.getIRI());
-            interactionListener.newLink(props);
+            interactionListener.on(props);
         };
 
 
@@ -283,7 +284,7 @@ public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
         RecordListener listener1 = record -> {
             Map<String, String> props = importPredator(speciesMap, references, countries, namespace, record);
             appendPreyInfo(speciesMap, namespace, record, props);
-            listener.newLink(props);
+            listener.on(props);
         };
 
 
@@ -294,7 +295,7 @@ public class DatasetImporterForFishbase3 extends DatasetImporterWithListener {
         RecordListener listener1 = record -> {
             Map<String, String> props = importPredator(speciesMap, references, countries, namespace, record);
             props.put(TaxonUtil.TARGET_TAXON_NAME, columnValueOrNull(record, "FoodII"));
-            listener.newLink(props);
+            listener.on(props);
         };
 
 

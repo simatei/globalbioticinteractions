@@ -5,7 +5,7 @@
 
     <groupId>org.eol</groupId>
     <artifactId>eol-globi-parent</artifactId>
-    <version>0.6-SNAPSHOT</version>
+    <version>0.21.3-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Global Biotic Interactions Shared Project Settings</name>
 
@@ -19,9 +19,12 @@
         <jena.version>1.0.2</jena.version>
         <commons-io.version>2.6</commons-io.version>
         <httpcomponents.version>4.5.8</httpcomponents.version>
+        <slf4j.version>1.7.30</slf4j.version>
         <maven-assembly-plugin.version>3.1.0</maven-assembly-plugin.version>
         <skip.import>false</skip.import>
         <skip.export>false</skip.export>
+        <globi.snapshot.repo.url>s3://globi/snapshot</globi.snapshot.repo.url>
+        <globi.release.repo.url>s3://globi/release</globi.release.repo.url>
     </properties>
 
     <dependencies>
@@ -62,9 +65,9 @@
     <build>
         <extensions>
             <extension>
-                <groupId>net.adamcin.org.kuali.maven.wagons</groupId>
+                <groupId>org.globalbioticinteractions</groupId>
                 <artifactId>maven-s3-wagon</artifactId>
-                <version>1.2.2</version>
+                <version>0.0.4</version>
             </extension>
         </extensions>
         <plugins>
@@ -172,20 +175,21 @@
     <scm>
         <connection>scm:git:git@github.com:globalbioticinteractions/globalbioticinteractions.git</connection>
         <url>scm:git:git@github.com:globalbioticinteractions/globalbioticinteractions.git</url>
-        <developerConnection>scm:git:git@github.com:globalbioticinteractions/globalbioticinteractions</developerConnection>
+        <developerConnection>scm:git:git@github.com:globalbioticinteractions/globalbioticinteractions
+        </developerConnection>
         <tag>HEAD</tag>
     </scm>
 
     <distributionManagement>
         <repository>
             <id>globi-release</id>
-            <name>AWS Release Repository</name>
-            <url>s3://globi/release</url>
+            <name>Release Repository</name>
+            <url>${globi.release.repo.url}</url>
         </repository>
         <snapshotRepository>
             <id>globi-snapshot</id>
-            <name>AWS Snapshot Repository</name>
-            <url>s3://globi/snapshot</url>
+            <name>Snapshot Repository</name>
+            <url>${globi.snapshot.repo.url}</url>
         </snapshotRepository>
     </distributionManagement>
 

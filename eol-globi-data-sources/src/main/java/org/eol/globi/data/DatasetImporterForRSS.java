@@ -1,5 +1,6 @@
 package org.eol.globi.data;
 
+import com.sun.syndication.feed.synd.SyndCategory;
 import com.sun.syndication.feed.synd.SyndContent;
 import com.sun.syndication.feed.synd.SyndEntry;
 import com.sun.syndication.feed.synd.SyndFeed;
@@ -7,8 +8,6 @@ import com.sun.syndication.io.FeedException;
 import com.sun.syndication.io.SyndFeedInput;
 import com.sun.syndication.io.XmlReader;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ObjectNode;
 import org.eol.globi.domain.PropertyAndValueDictionary;
@@ -16,6 +15,8 @@ import org.eol.globi.util.DatasetImportUtil;
 import org.globalbioticinteractions.dataset.Dataset;
 import org.globalbioticinteractions.dataset.DatasetProxy;
 import org.globalbioticinteractions.dataset.DatasetUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
@@ -28,9 +29,10 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class DatasetImporterForRSS extends NodeBasedImporter {
-    private static final Log LOG = LogFactory.getLog(DatasetImporterForRSS.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DatasetImporterForRSS.class);
     public static final String HAS_DEPENDENCIES = "hasDependencies";
 
     public DatasetImporterForRSS(ParserFactory parserFactory, NodeFactory nodeFactory) {
@@ -39,14 +41,32 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
 
     @Override
     public void importStudy() throws StudyImporterException {
-        final List<Dataset> datasets = getDatasetsForFeed(getDataset());
-
+        final List<Dataset> datasets = getDatasets(getDataset());
+        List<Dataset> dependencies = getDependencies(getDataset());
         DatasetImportUtil.resolveAndImportDatasets(
-                datasets,
+                dependencies,
                 datasets,
                 getLogger(),
                 getNodeFactory(),
                 getRssFeedUrlString());
+    }
+
+    public static List<Dataset> getDatasets(Dataset dataset) throws StudyImporterException {
+        return getDatasets(
+                dataset,
+                x -> StringUtils.equals("false", x.getOrDefault("isDependency", "false")));
+    }
+
+    public static List<Dataset> getDatasets(Dataset dataset, Predicate<Dataset> datasetPredicate) throws StudyImporterException {
+        List<Dataset> datasetsForFeed = getDatasetsForFeed(dataset);
+        return datasetsForFeed
+                .stream()
+                .filter(datasetPredicate)
+                .collect(Collectors.toList());
+    }
+
+    public static List<Dataset> getDependencies(Dataset dataset) throws StudyImporterException {
+        return getDatasets(dataset, x -> true);
     }
 
     public String getRssFeedUrlString() {
@@ -61,16 +81,11 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
 
 
     static List<Dataset> getDatasetsForFeed(Dataset datasetOrig) throws StudyImporterException {
-        SyndFeedInput input = new SyndFeedInput();
-        SyndFeed feed;
-        String rss = getRSSEndpoint(datasetOrig);
-        try {
-            URI rssURI = URI.create(StringUtils.isBlank(rss) ? "rss" : rss);
-            feed = input.build(new XmlReader(datasetOrig.retrieve(rssURI)));
-        } catch (FeedException | IOException e) {
-            throw new StudyImporterException("failed to read rss feed [" + rss + "]", e);
-        }
+        SyndFeed feed = parseFeed(datasetOrig);
+        return extractDatasets(datasetOrig, feed);
+    }
 
+    private static List<Dataset> extractDatasets(Dataset datasetOrig, SyndFeed feed) {
         List<Dataset> datasets = new ArrayList<>();
         final List entries = feed.getEntries();
         for (Object entry : entries) {
@@ -83,13 +98,24 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
                     if (e != null) {
                         datasets.add(e);
                     }
-                    ;
                 } else {
                     LOG.info("skipping [" + title + "] : was not included or excluded.");
                 }
             }
         }
         return datasets;
+    }
+
+    private static SyndFeed parseFeed(Dataset datasetOrig) throws StudyImporterException {
+        SyndFeed feed;
+        String rss = getRSSEndpoint(datasetOrig);
+        try {
+            URI rssURI = URI.create(StringUtils.isBlank(rss) ? "rss" : rss);
+            feed = new SyndFeedInput().build(new XmlReader(datasetOrig.retrieve(rssURI)));
+        } catch (FeedException | IOException e) {
+            throw new StudyImporterException("failed to read rss feed [" + rss + "]", e);
+        }
+        return feed;
     }
 
     static boolean shouldIncludeTitleInDatasetCollection(String title, Dataset dataset) {
@@ -138,12 +164,13 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
         String archiveURI = StringUtils.trim(entry.getLink());
         return embeddedDatasetFor(datasetOrig,
                 citation,
-                URI.create(archiveURI)
+                URI.create(archiveURI),
+                parseForeignEntriesAndCategories(entry)
         );
     }
 
     private static boolean isLikelyIPTEntry(SyndEntry entry) {
-        Map<String, String> foreignEntries = parseForeignEntries(entry);
+        Map<String, String> foreignEntries = parseForeignEntriesAndCategories(entry);
         return foreignEntries.containsKey("eml")
                 || foreignEntries.containsKey("dwca");
 
@@ -151,7 +178,7 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
 
     private static Dataset datasetForIPT(Dataset datasetOrig, SyndEntry entry) {
         Dataset dataset = null;
-        Map<String, String> foreignEntries = parseForeignEntries(entry);
+        Map<String, String> foreignEntries = parseForeignEntriesAndCategories(entry);
         if (foreignEntries.containsKey("dwca")) {
             dataset = datasetFor(datasetOrig, entry, foreignEntries);
         }
@@ -162,13 +189,15 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
         Dataset dataset;
         String title = entry.getTitle();
         String citation = StringUtils.trim(title);
-        dataset = embeddedDatasetFor(datasetOrig,
+        dataset = embeddedDatasetFor(
+                datasetOrig,
                 citation,
-                URI.create(foreignEntries.get("dwca")));
+                URI.create(foreignEntries.get("dwca")),
+                parseForeignEntriesAndCategories(entry));
         return dataset;
     }
 
-    private static Map<String, String> parseForeignEntries(SyndEntry entry) {
+    private static Map<String, String> parseForeignEntriesAndCategories(SyndEntry entry) {
         Object foreignMarkup = entry.getForeignMarkup();
         Map<String, String> foreignEntries = new TreeMap<>();
         if (foreignMarkup instanceof Collection) {
@@ -180,6 +209,19 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
                 }
             }
         }
+
+        List categories = entry.getCategories();
+        for (Object category : categories) {
+            if (category instanceof SyndCategory) {
+                SyndCategory cat = (SyndCategory) category;
+                if (StringUtils.equals(cat.getTaxonomyUri(), "http://www.w3.org/ns/prov")
+                    && StringUtils.equals(cat.getName(), "http://www.w3.org/ns/prov#wasUsedBy")) {
+                    foreignEntries.put("isDependency", "true");
+                } else if (StringUtils.equals(cat.getTaxonomyUri(), "http://purl.org/dc/terms/MediaType")) {
+                    foreignEntries.put("format", StringUtils.replace(cat.getName(), "application/globi+", ""));
+                }
+            }
+        }
         return foreignEntries;
     }
 
@@ -187,12 +229,24 @@ public class DatasetImporterForRSS extends NodeBasedImporter {
     static Dataset embeddedDatasetFor(final Dataset datasetOrig,
                                       final String embeddedCitation,
                                       final URI embeddedArchiveURI) {
-        String hasDependencies = datasetOrig.getOrDefault("hasDependencies", "false");
+        return embeddedDatasetFor(
+                datasetOrig,
+                embeddedCitation,
+                embeddedArchiveURI,
+                Collections.emptyMap());
+    }
+
+    static Dataset embeddedDatasetFor(final Dataset datasetOrig,
+                                      final String embeddedCitation,
+                                      final URI embeddedArchiveURI,
+                                      final Map<String, String> properties) {
+        String hasDependencies = datasetOrig.getOrDefault(HAS_DEPENDENCIES, "false");
         ObjectNode config = new ObjectMapper().createObjectNode();
         config.put("citation", embeddedCitation);
-        config.put("format", PropertyAndValueDictionary.MIME_TYPE_DWCA);
+        config.put("format", properties.getOrDefault("format", PropertyAndValueDictionary.MIME_TYPE_DWCA));
         config.put("url", embeddedArchiveURI.toString());
         config.put(HAS_DEPENDENCIES, hasDependencies);
+        config.put("isDependency", properties.getOrDefault("isDependency", "false"));
 
         DatasetProxy dataset = new DatasetProxy(datasetOrig) {
             @Override

@@ -13,7 +13,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import static org.eol.globi.domain.InteractType.INTERACTS_WITH;
 import static org.eol.globi.domain.InteractType.KILLS;
@@ -34,6 +36,8 @@ import static org.eol.globi.server.QueryType.SINGLE_TAXON_ALL;
 import static org.eol.globi.server.QueryType.SINGLE_TAXON_DISTINCT;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.IsCollectionContaining.hasItem;
+
 public class CypherQueryBuilderTest {
 
     private static String CYPHER_VERSION = "CYPHER 2.3 ";
@@ -45,12 +49,13 @@ public class CypherQueryBuilderTest {
     private static final String EXPECTED_MATCH_CLAUSE_DISTINCT_REFUTING_AND_SUPPORTING = expectedMatchClause(EXPECTED_INTERACTION_CLAUSE_ALL_INTERACTIONS, false, false, "REFUTES|COLLECTED");
     private static final String EXPECTED_MATCH_CLAUSE_SPATIAL = expectedMatchClause(EXPECTED_INTERACTION_CLAUSE_ALL_INTERACTIONS, true, true);
     private static final String EXPECTED_ACCORDING_TO_START_CLAUSE = CYPHER_VERSION +
-            "START study = node:studies('*:*') " +
-            "MATCH study-[:IN_DATASET]->dataset " +
-            "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-            "OR (exists(study.citation) AND study.citation =~ {accordingTo}) " +
-            "OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-            "WITH study ";
+            "START externalId = node:externalIds({accordingTo})" +
+            " MATCH" +
+            " x-[:IN_DATASET|HAS_DOI|HAS_EXTERNAL_ID*]->externalId" +
+            " WHERE" +
+            " x.type = 'StudyNode'" +
+            " WITH" +
+            " x as study ";
     private static final String EXTERNAL_WHERE_CLAUSE_MAMMALIA = "WHERE " + hasTargetTaxon("Mammalia");
     private static final String HAS_TARGET_TAXON_PLANTAE = hasTargetTaxon("Plantae");
 
@@ -59,7 +64,7 @@ public class CypherQueryBuilderTest {
     }
 
     private static String hasTaxon(String taxonName, String sourceOrTarget) {
-        return "(exists(" + sourceOrTarget + "Taxon.externalIds) AND ANY(x IN split(" + sourceOrTarget + "Taxon.externalIds, '|') WHERE trim(x) in ['" + taxonName +"'])) ";
+        return "(exists(" + sourceOrTarget + "Taxon.externalIds) AND ANY(x IN split(" + sourceOrTarget + "Taxon.externalIds, '|') WHERE trim(x) in ['" + taxonName + "'])) ";
     }
 
     private static String expectedReturnClause() {
@@ -95,12 +100,20 @@ public class CypherQueryBuilderTest {
             "sourceTaxon.externalId as source_taxon_external_id," +
             "sourceTaxon.name as source_taxon_name," +
             "sourceTaxon.path as source_taxon_path," +
+            "sourceSpecimen.occurrenceId as source_specimen_occurrence_id," +
+            "sourceSpecimen.institutionCode as source_specimen_institution_code," +
+            "sourceSpecimen.collectionCode as source_specimen_collection_code," +
+            "sourceSpecimen.catalogNumber as source_specimen_catalog_number," +
             "sourceSpecimen.lifeStageLabel as source_specimen_life_stage," +
             "sourceSpecimen.basisOfRecordLabel as source_specimen_basis_of_record," +
             "interaction.label as interaction_type," +
             "targetTaxon.externalId as target_taxon_external_id," +
             "targetTaxon.name as target_taxon_name," +
             "targetTaxon.path as target_taxon_path," +
+            "targetSpecimen.occurrenceId as target_specimen_occurrence_id," +
+            "targetSpecimen.institutionCode as target_specimen_institution_code," +
+            "targetSpecimen.collectionCode as target_specimen_collection_code," +
+            "targetSpecimen.catalogNumber as target_specimen_catalog_number," +
             "targetSpecimen.lifeStageLabel as target_specimen_life_stage," +
             "targetSpecimen.basisOfRecordLabel as target_specimen_basis_of_record," +
             "loc.latitude as latitude," +
@@ -111,12 +124,20 @@ public class CypherQueryBuilderTest {
             "RETURN sourceTaxon.externalId as source_taxon_external_id," +
             "sourceTaxon.name as source_taxon_name," +
             "sourceTaxon.path as source_taxon_path," +
+            "NULL as source_specimen_occurrence_id," +
+            "NULL as source_specimen_institution_code," +
+            "NULL as source_specimen_collection_code," +
+            "NULL as source_specimen_catalog_number," +
             "NULL as source_specimen_life_stage," +
             "NULL as source_specimen_basis_of_record," +
             "iType as interaction_type," +
             "targetTaxon.externalId as target_taxon_external_id," +
             "targetTaxon.name as target_taxon_name," +
             "targetTaxon.path as target_taxon_path," +
+            "NULL as target_specimen_occurrence_id," +
+            "NULL as target_specimen_institution_code," +
+            "NULL as target_specimen_collection_code," +
+            "NULL as target_specimen_catalog_number," +
             "NULL as target_specimen_life_stage," +
             "NULL as target_specimen_basis_of_record," +
             "NULL as latitude," +
@@ -138,7 +159,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForSourceAndTargetTaxaLocations()  {
+    public void findInteractionForSourceAndTargetTaxaLocations() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Actinopterygii", "Chordata"});
@@ -171,7 +192,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForSourceAndTargetTaxaLocationsDistinct()  {
+    public void findInteractionForSourceAndTargetTaxaLocationsDistinct() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Actinopterygii", "Chordata"});
@@ -189,7 +210,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForSourceAndTargetTaxaLocationsDistinctTaxonNamesOnly()  {
+    public void findInteractionForSourceAndTargetTaxaLocationsDistinctTaxonNamesOnly() {
         Map<String, String[]> fieldParams = new HashMap<String, String[]>() {{
             put("field", new String[]{"source_taxon_name", "target_taxon_name"});
         }};
@@ -198,7 +219,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForSourceAndTargetTaxaLocationsDistinctTaxonNamesOnlyUsingCommaFields()  {
+    public void findInteractionForSourceAndTargetTaxaLocationsDistinctTaxonNamesOnlyUsingCommaFields() {
         Map<String, String[]> fieldParams = new HashMap<String, String[]>() {{
             put("fields", new String[]{"source_taxon_name,target_taxon_name"});
         }};
@@ -227,7 +248,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsAccordingToWithTaxa()  {
+    public void findInteractionsAccordingToWithTaxa() {
         Map<String, String[]> fieldParams = new HashMap<String, String[]>() {{
             put("field", new String[]{"source_taxon_name", "target_taxon_name"});
         }};
@@ -236,7 +257,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsAccordingToWithTaxaWithCommaFields()  {
+    public void findInteractionsAccordingToWithTaxaWithCommaFields() {
         Map<String, String[]> fieldParams = new HashMap<String, String[]>() {{
             put("fields", new String[]{"source_taxon_name,target_taxon_name"});
         }};
@@ -247,7 +268,7 @@ public class CypherQueryBuilderTest {
     protected void assertFindInteractionsAccordingToWithTaxa(Map<String, String[]> fieldParams) {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("targetTaxon", new String[]{"Arthropoda"});
                 put("sourceTaxon", new String[]{"Arthropoda"});
 
@@ -257,34 +278,36 @@ public class CypherQueryBuilderTest {
 
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(EXPECTED_ACCORDING_TO_START_CLAUSE +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTargetTaxon("Arthropoda") + "AND " + hasTaxon("Arthropoda", "source") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, source_taxon_name=path:\\\"Arthropoda\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", source_taxon_name=path:\\\"Arthropoda\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToWithTargetTaxaOnly()  {
+    public void findInteractionsAccordingToWithTargetTaxaOnly() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("targetTaxon", new String[]{"Arthropoda"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION + "START study = node:studies('*:*') MATCH study-[:IN_DATASET]->dataset WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) OR (exists(study.citation) AND study.citation =~ {accordingTo}) OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTargetTaxon("Arthropoda") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon " +
                 "RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, target_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToWithTargetTaxaOnly2()  {
+    public void findInteractionsAccordingToWithTargetTaxaOnly2() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("accordingTo", new String[]{"http://inaturalist.org/bla"});
@@ -294,20 +317,17 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTargetTaxon("Arthropoda") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon " +
                 "RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i)(\\\\Qhttp://inaturalist.org/bla\\\\E), target_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"http://inaturalist.org/bla\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsDOIAccordingToWithTargetTaxaOnly2()  {
+    public void findInteractionsDOIAccordingToWithTargetTaxaOnly2() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("accordingTo", new String[]{"10.1234/4325", "doi:10.332/222", "https://doi.org/10.444/222"});
@@ -317,20 +337,19 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.doi) AND study.doi =~ {accordingTo}) WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTargetTaxon("Arthropoda") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon " +
                 "RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i)(\\\\Q10.1234/4325\\\\E|\\\\Q10.332/222\\\\E|\\\\Q10.444/222\\\\E), target_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is(
+                "{accordingTo=externalId:\\\"10.1234/4325\\\" externalId:\\\"10.332/222\\\" externalId:\\\"10.444/222\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
 
     }
 
     @Test
-    public void findInteractionsAccordingToWithSexAndObservations()  {
+    public void findInteractionsAccordingToWithSexAndObservations() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("accordingTo", new String[]{"http://arctos.database.museum/guid/MSB:Mamm:79902"});
@@ -340,18 +359,64 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, QueryType.forParams(params));
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "WITH study " +
-                "MATCH sourceTaxon<-[:CLASSIFIED_AS]-sourceSpecimen-[interaction:PREYS_UPON|PARASITE_OF|HAS_HOST|INTERACTS_WITH|HOST_OF|POLLINATES|PERCHING_ON|ATE|SYMBIONT_OF|PREYED_UPON_BY|POLLINATED_BY|EATEN_BY|HAS_PARASITE|PERCHED_ON_BY|HAS_PATHOGEN|PATHOGEN_OF|HAS_VECTOR|VECTOR_OF|VISITED_BY|VISITS|FLOWERS_VISITED_BY|VISITS_FLOWERS_OF|INHABITED_BY|INHABITS|ADJACENT_TO|CREATES_HABITAT_FOR|IS_HABITAT_OF|LIVED_ON_BY|LIVES_ON|LIVED_INSIDE_OF_BY|LIVES_INSIDE_OF|LIVED_NEAR_BY|LIVES_NEAR|LIVED_UNDER_BY|LIVES_UNDER|LIVES_WITH|ENDOPARASITE_OF|HAS_ENDOPARASITE|HYPERPARASITE_OF|HAS_HYPERPARASITE|HYPERPARASITOID_OF|HAS_HYPERPARASITOID|ECTOPARASITE_OF|HAS_ECTOPARASITE|KLEPTOPARASITE_OF|HAS_KLEPTOPARASITE|PARASITOID_OF|HAS_PARASITOID|ENDOPARASITOID_OF|HAS_ENDOPARASITOID|ECTOPARASITOID_OF|HAS_ECTOPARASITOID|GUEST_OF|HAS_GUEST_OF|FARMED_BY|FARMS|DAMAGED_BY|DAMAGES|DISPERSAL_VECTOR_OF|HAS_DISPERAL_VECTOR|KILLED_BY|KILLS|EPIPHITE_OF|HAS_EPIPHITE|LAYS_EGGS_ON|HAS_EGGS_LAYED_ON_BY|CO_OCCURS_WITH|COMMENSALIST_OF|MUTUALIST_OF|AGGRESSOR_OF|HAS_AGGRESSOR|RELATED_TO]->targetSpecimen-[:CLASSIFIED_AS]->targetTaxon, sourceSpecimen<-[collected_rel:COLLECTED]-study-[:IN_DATASET]->dataset OPTIONAL MATCH sourceSpecimen-[:COLLECTED_AT]->loc RETURN sourceTaxon.name as source_taxon_name,sourceSpecimen.sexLabel as source_specimen_sex"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i)(\\\\Qhttp://arctos.database.museum/guid/MSB:Mamm:79902\\\\E)}")));
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
+                "MATCH sourceTaxon<-[:CLASSIFIED_AS]-sourceSpecimen-[interaction:PREYS_UPON|PARASITE_OF|HAS_HOST|INTERACTS_WITH|HOST_OF|POLLINATES|PERCHING_ON|ATE|SYMBIONT_OF|PREYED_UPON_BY|POLLINATED_BY|EATEN_BY|HAS_PARASITE|PERCHED_ON_BY|HAS_PATHOGEN|PATHOGEN_OF|ACQUIRES_NUTRIENTS_FROM|PROVIDES_NUTRIENTS_FOR|HAS_VECTOR|VECTOR_OF|VISITED_BY|VISITS|FLOWERS_VISITED_BY|VISITS_FLOWERS_OF|INHABITED_BY|INHABITS|ADJACENT_TO|CREATES_HABITAT_FOR|HAS_HABITAT|LIVED_ON_BY|LIVES_ON|LIVED_INSIDE_OF_BY|LIVES_INSIDE_OF|LIVED_NEAR_BY|LIVES_NEAR|LIVED_UNDER_BY|LIVES_UNDER|LIVES_WITH|ENDOPARASITE_OF|HAS_ENDOPARASITE|HYPERPARASITE_OF|HAS_HYPERPARASITE|HYPERPARASITOID_OF|HAS_HYPERPARASITOID|ECTOPARASITE_OF|HAS_ECTOPARASITE|KLEPTOPARASITE_OF|HAS_KLEPTOPARASITE|PARASITOID_OF|HAS_PARASITOID|ENDOPARASITOID_OF|HAS_ENDOPARASITOID|ECTOPARASITOID_OF|HAS_ECTOPARASITOID|GUEST_OF|HAS_GUEST_OF|FARMED_BY|FARMS|DAMAGED_BY|DAMAGES|DISPERSAL_VECTOR_OF|HAS_DISPERAL_VECTOR|KILLED_BY|KILLS|EPIPHITE_OF|HAS_EPIPHITE|LAYS_EGGS_ON|HAS_EGGS_LAYED_ON_BY|LAYS_EGGS_IN|HAS_EGGS_LAYED_IN_BY|CO_OCCURS_WITH|CO_ROOSTS_WITH|COMMENSALIST_OF|MUTUALIST_OF|AGGRESSOR_OF|HAS_AGGRESSOR|RELATED_TO]->targetSpecimen-[:CLASSIFIED_AS]->targetTaxon, sourceSpecimen<-[collected_rel:COLLECTED]-study-[:IN_DATASET]->dataset OPTIONAL MATCH sourceSpecimen-[:COLLECTED_AT]->loc RETURN sourceTaxon.name as source_taxon_name,sourceSpecimen.sexLabel as source_specimen_sex"));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"http://arctos.database.museum/guid/MSB:Mamm:79902\\\"}")));
 
     }
 
     @Test
-    public void findInteractionsAccordingToWithTargetTaxaOnlyEmptySource()  {
+    public void findInteractionsWithCollectionTimeUnixEpoch() {
+        HashMap<String, String[]> params = new HashMap<String, String[]>() {
+            {
+                put("includeObservations", new String[]{"true"});
+                put("interactionType", new String[]{"pathogenOf"});
+                put("field", new String[]{"source_taxon_name", "target_taxon_name", "collection_time_in_unix_epoch"});
+            }
+        };
+
+        query = buildInteractionQuery(params, QueryType.forParams(params));
+        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
+                "START sourceTaxon = node:taxons('*:*') " +
+                "MATCH sourceTaxon<-[:CLASSIFIED_AS]-sourceSpecimen-[interaction:PATHOGEN_OF]->targetSpecimen-[:CLASSIFIED_AS]->targetTaxon, " +
+                "sourceSpecimen<-[collected_rel:COLLECTED]-study-[:IN_DATASET]->dataset " +
+                "OPTIONAL MATCH sourceSpecimen-[:COLLECTED_AT]->loc " +
+                "RETURN " +
+                "sourceTaxon.name as source_taxon_name" +
+                ",targetTaxon.name as target_taxon_name" +
+                ",collected_rel.dateInUnixEpoch as collection_time_in_unix_epoch"));
+        assertThat(query.getParams().toString(), is(is("{}")));
+
+    }
+
+    @Test
+    public void findInteractionsSingleTaxonWithCollectionTimeUnixEpoch() {
+        HashMap<String, String[]> params = new HashMap<String, String[]>() {
+            {
+                put("includeObservations", new String[]{"true"});
+                put("interactionType", new String[]{"pathogenOf"});
+                put("sourceTaxon", new String[]{"Ariopsis felis"});
+                put("field", new String[]{"source_taxon_name", "target_taxon_name", "collection_time_in_unix_epoch"});
+            }
+        };
+
+        query = buildInteractionQuery(params, QueryType.forParams(params));
+        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
+                "START sourceTaxon = node:taxonPaths({source_taxon_name}) " +
+                "MATCH sourceTaxon<-[:CLASSIFIED_AS]-sourceSpecimen-[interaction:PATHOGEN_OF]->targetSpecimen-[:CLASSIFIED_AS]->targetTaxon, " +
+                "sourceSpecimen<-[collected_rel:COLLECTED]-study-[:IN_DATASET]->dataset " +
+                "OPTIONAL MATCH sourceSpecimen-[:COLLECTED_AT]->loc " +
+                "RETURN " +
+                "sourceTaxon.name as source_taxon_name" +
+                ",targetTaxon.name as target_taxon_name" +
+                ",collected_rel.dateInUnixEpoch as collection_time_in_unix_epoch"));
+        assertThat(query.getParams().toString(), is(is("{source_taxon_name=path:\\\"Ariopsis felis\\\"}")));
+
+    }
+
+    @Test
+    public void findInteractionsAccordingToWithTargetTaxaOnlyEmptySource() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("accordingTo", new String[]{"http://inaturalist.org/bla"});
@@ -362,20 +427,17 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTargetTaxon("Arthropoda") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon " +
                 "RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i)(\\\\Qhttp://inaturalist.org/bla\\\\E), target_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"http://inaturalist.org/bla\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexTargetTaxaOnly()  {
+    public void findInteractionsTaxaInteractionIndexTargetTaxaOnly() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -394,7 +456,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexTargetTaxaOnlyTaxonIdPrefix()  {
+    public void findInteractionsTaxaInteractionIndexTargetTaxaOnlyTaxonIdPrefix() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -414,7 +476,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsNameThatLooksLikeId()  {
+    public void findInteractionsNameThatLooksLikeId() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"urn:catalog:AMNH:Mammals:M-39582"});
@@ -431,7 +493,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractions()  {
+    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractions() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -451,7 +513,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void accordingToDataset()  {
+    public void accordingToDataset() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -472,13 +534,13 @@ public class CypherQueryBuilderTest {
                 "RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name,interactionCount as number_of_interactions,studyCount as number_of_studies,sourceCount as number_of_sources"));
         Map<String, String> expected = new HashMap<String, String>() {{
             put("target_taxon_name", "path:\\\"Arthropoda\\\"");
-            put("accordingTo", "namespace:(some/namespace)");
+            put("accordingTo", "namespace:\\\"some/namespace\\\"");
         }};
         assertThat(query.getParams(), is(expected));
     }
 
     @Test
-    public void accordingToDatasetWithBlanksInNamespace()  {
+    public void accordingToDatasetWithBlanksInNamespace() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -509,14 +571,14 @@ public class CypherQueryBuilderTest {
                 "sourceCount as number_of_sources"));
         Map<String, String> expected = new HashMap<String, String>() {{
             put("target_taxon_name", "path:\\\"Arthropoda\\\"");
-            put("accordingTo", "namespace:(some/namespace)");
+            put("accordingTo", "namespace:\\\"some/namespace\\\"");
         }};
         assertThat(query.getParams(), is(expected));
     }
 
 
     @Test
-    public void findNumberOfStudiesForDistinctInteractionsAccordingTo()  {
+    public void findNumberOfStudiesForDistinctInteractionsAccordingTo() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -526,11 +588,8 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) OR (exists(study.citation) AND study.citation =~ {accordingTo}) OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 "MATCH sourceTaxon<-[:CLASSIFIED_AS]-sourceSpecimen-[interaction:" + createInteractionTypeSelector(Collections.emptyList()) + "]" +
                 "->targetSpecimen-[:CLASSIFIED_AS]->targetTaxon, " +
                 "sourceSpecimen<-[collected_rel:COLLECTED]-study-[:IN_DATASET]->dataset " +
@@ -550,13 +609,13 @@ public class CypherQueryBuilderTest {
                 "sourceCount as number_of_sources"));
         Map<String, String> expected = new HashMap<String, String>() {{
             put("target_taxon_name", "path:\\\"Arthropoda\\\"");
-            put("accordingTo", "(?i).*(\\\\QsomeSource\\\\E).*");
+            put("accordingTo", "externalId:\\\"someSource\\\"");
         }};
         assertThat(query.getParams(), is(expected));
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractionsExcludeChildTaxa()  {
+    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractionsExcludeChildTaxa() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("excludeChildTaxa", new String[]{"true"});
@@ -576,7 +635,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractionsExactNameMatchOnly()  {
+    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractionsExactNameMatchOnly() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
@@ -596,7 +655,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractionsInteractionType()  {
+    public void findInteractionsTaxaInteractionIndexTargetTaxaNumberOfInteractionsInteractionType() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -615,7 +674,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsTaxaInteractionIndexInteractionTypeTargetTaxaNumberOfInteractions()  {
+    public void findInteractionsTaxaInteractionIndexInteractionTypeTargetTaxaNumberOfInteractions() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Mammalia"});
@@ -639,7 +698,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsAccordingToWithTargetTaxaOnly3()  {
+    public void findInteractionsAccordingToWithTargetTaxaOnly3() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("accordingTo", new String[]{"http://inaturalist.org/bla", "http://inaturalist.org/bla2"});
@@ -649,44 +708,38 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTargetTaxon("Arthropoda") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i)(\\\\Qhttp://inaturalist.org/bla\\\\E|\\\\Qhttp://inaturalist.org/bla2\\\\E), target_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"http://inaturalist.org/bla\\\" externalId:\\\"http://inaturalist.org/bla2\\\", target_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxaOnly()  {
+    public void findInteractionsAccordingToWithSourceTaxaOnly() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("sourceTaxon", new String[]{"Arthropoda"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) OR (exists(study.citation) AND study.citation =~ {accordingTo}) OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE " + hasTaxon("Arthropoda", "source") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, source_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", source_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findRefutingAccordingTo()  {
+    public void findRefutingAccordingTo() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("refutes", new String[]{"t"});
                 put("sourceTaxon", new String[]{"Arthropoda"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
@@ -694,93 +747,76 @@ public class CypherQueryBuilderTest {
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) OR (exists(study.citation) AND study.citation =~ {accordingTo}) OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT_REFUTING +
                 "WHERE " + hasTaxon("Arthropoda", "source") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, source_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", source_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findRefutingAndNonRefutingAccordingTo()  {
+    public void findRefutingAndNonRefutingAccordingTo() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist"});
-                put("refutes", new String[]{"t","f"});
+                put("accordingTo", new String[]{"foo"});
+                put("refutes", new String[]{"t", "f"});
                 put("sourceTaxon", new String[]{"Arthropoda"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "OR (exists(study.citation) AND study.citation =~ {accordingTo}) " +
-                "OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT_REFUTING_AND_SUPPORTING +
                 "WHERE " + hasTaxon("Arthropoda", "source") +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, source_taxon_name=path:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", source_taxon_name=path:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxaOnlyAndExactMatchOnly()  {
+    public void findInteractionsAccordingToWithSourceTaxaOnlyAndExactMatchOnly() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("sourceTaxon", new String[]{"Arthropoda"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "OR (exists(study.citation) AND study.citation =~ {accordingTo}) " +
-                "OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE (exists(sourceTaxon.name) AND sourceTaxon.name IN ['Arthropoda']) " +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, source_taxon_name=name:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", source_taxon_name=name:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxaOnlyAndExcludeChildTaxa()  {
+    public void findInteractionsAccordingToWithSourceTaxaOnlyAndExcludeChildTaxa() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("excludeChildTaxa", new String[]{"true"});
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("sourceTaxon", new String[]{"Arthropoda"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "OR (exists(study.citation) AND study.citation =~ {accordingTo}) " +
-                "OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WHERE (exists(sourceTaxon.name) AND sourceTaxon.name IN ['Arthropoda']) " +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*, source_taxon_name=name:\\\"Arthropoda\\\"}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\", source_taxon_name=name:\\\"Arthropoda\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxaOnlyAndExactMatchOnlyIncludeObservations()  {
+    public void findInteractionsAccordingToWithSourceTaxaOnlyAndExactMatchOnlyIncludeObservations() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
@@ -812,7 +848,7 @@ public class CypherQueryBuilderTest {
 
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxonIdOnlyAndExactMatchOnlyIncludeObservations2()  {
+    public void findInteractionsAccordingToWithSourceTaxonIdOnlyAndExactMatchOnlyIncludeObservations2() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
@@ -832,7 +868,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxonIdAndNamesOnlyAndExactMatchOnlyIncludeObservations2()  {
+    public void findInteractionsAccordingToWithSourceTaxonIdAndNamesOnlyAndExactMatchOnlyIncludeObservations2() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
@@ -852,7 +888,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxonIdTargetTaxonIdAndNameOnlyAndExactMatchOnlyIncludeObservations2()  {
+    public void findInteractionsAccordingToWithSourceTaxonIdTargetTaxonIdAndNameOnlyAndExactMatchOnlyIncludeObservations2() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
@@ -874,7 +910,7 @@ public class CypherQueryBuilderTest {
 
 
     @Test
-    public void findInteractionsAccordingToWithSourceTaxonIdTargetUnsupportedTaxonIdAndNameOnlyAndExactMatchOnlyIncludeObservations2()  {
+    public void findInteractionsAccordingToWithSourceTaxonIdTargetUnsupportedTaxonIdAndNameOnlyAndExactMatchOnlyIncludeObservations2() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("exactNameMatchOnly", new String[]{"true"});
@@ -894,50 +930,41 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionsAccordingToNoTaxa()  {
+    public void findInteractionsAccordingToNoTaxa() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist"});
+                put("accordingTo", new String[]{"foo"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "OR (exists(study.citation) AND study.citation =~ {accordingTo}) " +
-                "OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) " +
-                "WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E).*}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\"}")));
     }
 
     @Test
-    public void findInteractionsAccordingToMultipleNoTaxa()  {
+    public void findInteractionsAccordingToMultipleNoTaxa() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
-                put("accordingTo", new String[]{"inaturalist", "gomexsi.edu"});
+                put("accordingTo", new String[]{"foo", "gomexsi.edu"});
                 put("field", new String[]{"source_taxon_name", "target_taxon_name"});
             }
         };
 
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT);
-        assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
-                "START study = node:studies('*:*') " +
-                "MATCH study-[:IN_DATASET]->dataset " +
-                "WHERE (exists(study.externalId) AND study.externalId =~ {accordingTo}) " +
-                "OR (exists(study.citation) AND study.citation =~ {accordingTo}) " +
-                "OR (exists(dataset.citation) AND dataset.citation =~ {accordingTo}) WITH study " +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 EXPECTED_MATCH_CLAUSE_DISTINCT +
                 "WITH distinct targetTaxon, interaction.label as iType, sourceTaxon RETURN sourceTaxon.name as source_taxon_name,targetTaxon.name as target_taxon_name"));
-        assertThat(query.getParams().toString(), is(is("{accordingTo=(?i).*(\\\\Qinaturalist\\\\E|\\\\Qgomexsi.edu\\\\E).*}")));
+        assertThat(query.getParams().toString(), is(is("{accordingTo=externalId:\\\"foo\\\" externalId:\\\"gomexsi.edu\\\"}")));
     }
 
     @Test
-    public void findInteractionForSourceAndTargetTaxaLocationsDistinctTaxonNamesOnlyFlippedFields()  {
+    public void findInteractionForSourceAndTargetTaxaLocationsDistinctTaxonNamesOnlyFlippedFields() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Actinopterygii", "Chordata"});
@@ -956,7 +983,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionCountOfEnhydraIncludeObservations()  {
+    public void findInteractionCountOfEnhydraIncludeObservations() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Enhydra"});
@@ -975,7 +1002,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findTaxaAtLocationsDistinct()  {
+    public void findTaxaAtLocationsDistinct() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -992,7 +1019,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findTaxaAtLocationsDistinctInteractionTypes()  {
+    public void findTaxaAtLocationsDistinctInteractionTypes() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1006,31 +1033,31 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findWithDispersalInteractionType()  {
+    public void findWithDispersalInteractionType() {
         final String typeSelector = CypherQueryBuilder.createInteractionTypeSelector(Collections.singletonList("dispersalVectorOf"));
         assertThat(typeSelector, is("DISPERSAL_VECTOR_OF"));
     }
 
     @Test
-    public void findWithDispersalInteractionType2()  {
+    public void findWithDispersalInteractionType2() {
         final String typeSelector = CypherQueryBuilder.createInteractionTypeSelector(Collections.singletonList("hasDispersalVector"));
         assertThat(typeSelector, is("HAS_DISPERAL_VECTOR"));
     }
 
     @Test
-    public void findWithDispersalInteractionTypeParasitoidByInternalName()  {
+    public void findWithDispersalInteractionTypeParasitoidByInternalName() {
         final String typeSelector = CypherQueryBuilder.createInteractionTypeSelector(Collections.singletonList("HAS_PARASITOID"));
         assertThat(typeSelector, is("HAS_HYPERPARASITOID|HAS_PARASITOID|HAS_ENDOPARASITOID|HAS_ECTOPARASITOID"));
     }
 
     @Test
-    public void findWithDispersalInteractionTypeParasitoidByIRI()  {
+    public void findWithDispersalInteractionTypeParasitoidByIRI() {
         final String typeSelector = CypherQueryBuilder.createInteractionTypeSelector(Collections.singletonList("http://purl.obolibrary.org/obo/RO_0002632"));
         assertThat(typeSelector, is("ECTOPARASITE_OF"));
     }
 
     @Test
-    public void findTaxaAtLocationsKillDistinctInteractionTypes()  {
+    public void findTaxaAtLocationsKillDistinctInteractionTypes() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1044,7 +1071,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findTaxaAtLocationsDistinctInteractionTypesSpecificFields()  {
+    public void findTaxaAtLocationsDistinctInteractionTypesSpecificFields() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1059,7 +1086,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findTaxaAtLocationsDistinctNoSpatialParam()  {
+    public void findTaxaAtLocationsDistinctNoSpatialParam() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
             }
@@ -1072,7 +1099,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findTaxaAtLocationsDistinctNoSpatialInteractTypesParam()  {
+    public void findTaxaAtLocationsDistinctNoSpatialInteractTypesParam() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("interactionType", new String[]{"preysOn", "parasiteOf"});
@@ -1085,7 +1112,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForLocationOnly()  {
+    public void findInteractionForLocationOnly() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1101,7 +1128,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForLocationOnlyDistinct()  {
+    public void findInteractionForLocationOnlyDistinct() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1117,7 +1144,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForSourceAndTargetTaxaNoLocation()  {
+    public void findInteractionForSourceAndTargetTaxaNoLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Actinopterygii", "Chordata"});
@@ -1136,7 +1163,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractions()  {
+    public void findInteractions() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{""});
@@ -1152,7 +1179,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForTargetTaxaOnlyNoLocation()  {
+    public void findInteractionForTargetTaxaOnlyNoLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("targetTaxon", new String[]{"Arthropoda"});
@@ -1169,7 +1196,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForTargetTaxaOnlyByInteractionType()  {
+    public void findInteractionForTargetTaxaOnlyByInteractionType() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Arthropoda"});
@@ -1229,7 +1256,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findSymbioticInteractions()  {
+    public void findSymbioticInteractions() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Arthropoda"});
@@ -1249,7 +1276,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findAnyInteractions()  {
+    public void findAnyInteractions() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Arthropoda"});
@@ -1270,7 +1297,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void findInteractionForTargetTaxaOnlyByInteractionTypeNotSupported()  {
+    public void findInteractionForTargetTaxaOnlyByInteractionTypeNotSupported() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Arthropoda"});
@@ -1283,7 +1310,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForTargetTaxaOnlyByEmptyInteractionTypeNotSupported()  {
+    public void findInteractionForTargetTaxaOnlyByEmptyInteractionTypeNotSupported() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Arthropoda"});
@@ -1303,7 +1330,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForAnimaliaAndAnimalia()  {
+    public void findInteractionForAnimaliaAndAnimalia() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Animalia"});
@@ -1314,7 +1341,7 @@ public class CypherQueryBuilderTest {
         };
 
         String expectedQuery = CYPHER_VERSION + "START sourceTaxon = node:taxonPaths({source_taxon_name}) " +
-                "MATCH sourceTaxon-[interaction:PREYS_UPON|PARASITE_OF|HAS_HOST|INTERACTS_WITH|HOST_OF|POLLINATES|PERCHING_ON|ATE|SYMBIONT_OF|PREYED_UPON_BY|POLLINATED_BY|EATEN_BY|HAS_PARASITE|PERCHED_ON_BY|HAS_PATHOGEN|PATHOGEN_OF|HAS_VECTOR|VECTOR_OF|VISITED_BY|VISITS|FLOWERS_VISITED_BY|VISITS_FLOWERS_OF|INHABITED_BY|INHABITS|CREATES_HABITAT_FOR|IS_HABITAT_OF|LIVED_ON_BY|LIVES_ON|LIVED_INSIDE_OF_BY|LIVES_INSIDE_OF|LIVED_NEAR_BY|LIVES_NEAR|LIVED_UNDER_BY|LIVES_UNDER|LIVES_WITH|ENDOPARASITE_OF|HAS_ENDOPARASITE|HYPERPARASITE_OF|HAS_HYPERPARASITE|HYPERPARASITOID_OF|HAS_HYPERPARASITOID|ECTOPARASITE_OF|HAS_ECTOPARASITE|KLEPTOPARASITE_OF|HAS_KLEPTOPARASITE|PARASITOID_OF|HAS_PARASITOID|ENDOPARASITOID_OF|HAS_ENDOPARASITOID|ECTOPARASITOID_OF|HAS_ECTOPARASITOID|GUEST_OF|HAS_GUEST_OF|FARMED_BY|FARMS|DAMAGED_BY|DAMAGES|DISPERSAL_VECTOR_OF|HAS_DISPERAL_VECTOR|KILLED_BY|KILLS|EPIPHITE_OF|HAS_EPIPHITE|LAYS_EGGS_ON|HAS_EGGS_LAYED_ON_BY|COMMENSALIST_OF|MUTUALIST_OF]->targetTaxon " +
+                "MATCH sourceTaxon-[interaction:PREYS_UPON|PARASITE_OF|HAS_HOST|INTERACTS_WITH|HOST_OF|POLLINATES|PERCHING_ON|ATE|SYMBIONT_OF|PREYED_UPON_BY|POLLINATED_BY|EATEN_BY|HAS_PARASITE|PERCHED_ON_BY|HAS_PATHOGEN|PATHOGEN_OF|ACQUIRES_NUTRIENTS_FROM|PROVIDES_NUTRIENTS_FOR|HAS_VECTOR|VECTOR_OF|VISITED_BY|VISITS|FLOWERS_VISITED_BY|VISITS_FLOWERS_OF|INHABITED_BY|INHABITS|CREATES_HABITAT_FOR|HAS_HABITAT|LIVED_ON_BY|LIVES_ON|LIVED_INSIDE_OF_BY|LIVES_INSIDE_OF|LIVED_NEAR_BY|LIVES_NEAR|LIVED_UNDER_BY|LIVES_UNDER|LIVES_WITH|ENDOPARASITE_OF|HAS_ENDOPARASITE|HYPERPARASITE_OF|HAS_HYPERPARASITE|HYPERPARASITOID_OF|HAS_HYPERPARASITOID|ECTOPARASITE_OF|HAS_ECTOPARASITE|KLEPTOPARASITE_OF|HAS_KLEPTOPARASITE|PARASITOID_OF|HAS_PARASITOID|ENDOPARASITOID_OF|HAS_ENDOPARASITOID|ECTOPARASITOID_OF|HAS_ECTOPARASITOID|GUEST_OF|HAS_GUEST_OF|FARMED_BY|FARMS|DAMAGED_BY|DAMAGES|DISPERSAL_VECTOR_OF|HAS_DISPERAL_VECTOR|KILLED_BY|KILLS|EPIPHITE_OF|HAS_EPIPHITE|LAYS_EGGS_ON|HAS_EGGS_LAYED_ON_BY|LAYS_EGGS_IN|HAS_EGGS_LAYED_IN_BY|COMMENSALIST_OF|MUTUALIST_OF]->targetTaxon " +
                 "WHERE (exists(targetTaxon.externalIds) AND ANY(x IN split(targetTaxon.externalIds, '|') WHERE trim(x) in ['Animalia'])) " +
                 "RETURN sourceTaxon.name as source_taxon_name,sourceTaxon.externalId as source_taxon_external_id,targetTaxon.name as target_taxon_name,targetTaxon.externalId as target_taxon_external_id,interaction.label as interaction_type,interaction.count as number_of_interactions";
         query = buildInteractionQuery(params, MULTI_TAXON_DISTINCT_BY_NAME_ONLY);
@@ -1323,7 +1350,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionForSourceTaxaOnlyNoLocation()  {
+    public void findInteractionForSourceTaxaOnlyNoLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("sourceTaxon", new String[]{"Actinopterygii", "Chordata"});
@@ -1340,7 +1367,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findInteractionNoParams()  {
+    public void findInteractionNoParams() {
         String expectedQuery = CYPHER_VERSION + "START study = node:studies('*:*') " +
                 EXPECTED_MATCH_CLAUSE_ALL +
                 "OPTIONAL MATCH sourceSpecimen-[:COLLECTED_AT]->loc " +
@@ -1351,7 +1378,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findPreysOnWithLocation()  {
+    public void findPreysOnWithLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1369,7 +1396,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findPlantPreyObservationsWithoutLocation()  {
+    public void findPlantPreyObservationsWithoutLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>();
         CypherQuery query = buildInteractionQuery("Homo sapiens", "preysOn", "Plantae", params, SINGLE_TAXON_ALL);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
@@ -1382,7 +1409,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findPlantParasiteObservationsWithoutLocation()  {
+    public void findPlantParasiteObservationsWithoutLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>();
         query = buildInteractionQuery("Homo sapiens", "parasiteOf", "Plantae", params, SINGLE_TAXON_ALL);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
@@ -1394,7 +1421,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findPreyObservationsNoLocation()  {
+    public void findPreyObservationsNoLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>();
         query = buildInteractionQuery("Homo sapiens", "preysOn", null, params, SINGLE_TAXON_ALL);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
@@ -1409,7 +1436,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findKillsObservationsNoLocation()  {
+    public void findKillsObservationsNoLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>();
         query = buildInteractionQuery("Homo sapiens", "kills", null, params, SINGLE_TAXON_ALL);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
@@ -1423,7 +1450,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findDistinctPreyWithLocation()  {
+    public void findDistinctPreyWithLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1442,7 +1469,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findDistinctPlantPreyWithoutLocation()  {
+    public void findDistinctPlantPreyWithoutLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>();
         query = buildInteractionQuery("Homo sapiens", "preysOn", "Plantae", params, SINGLE_TAXON_DISTINCT);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
@@ -1457,7 +1484,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void findDistinctPlantParasiteWithoutLocation()  {
+    public void findDistinctPlantParasiteWithoutLocation() {
         HashMap<String, String[]> params = new HashMap<String, String[]>();
         query = buildInteractionQuery("Homo sapiens", "parasiteOf", "Plantae", params, SINGLE_TAXON_DISTINCT);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION +
@@ -1473,7 +1500,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void statsWithBBox()  {
+    public void statsWithBBox() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1486,7 +1513,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void statsWithBBoxAndSource()  {
+    public void statsWithBBoxAndSource() {
         HashMap<String, String[]> params = new HashMap<String, String[]>() {
             {
                 put("bbox", new String[]{"-67.87,12.79,-57.08,23.32"});
@@ -1504,7 +1531,7 @@ public class CypherQueryBuilderTest {
     }
 
     @Test
-    public void stats()  {
+    public void stats() {
         query = spatialInfo(null);
         assertThat(query.getVersionedQuery(), is(CYPHER_VERSION + "START study = node:studies('*:*') " +
                 "MATCH " +
@@ -1580,22 +1607,31 @@ public class CypherQueryBuilderTest {
 
         query = locations(params);
 
-        assertThat(query.getVersionedQuery(), is(EXPECTED_ACCORDING_TO_START_CLAUSE +
+        assertThat(query.getVersionedQuery(), is(
+                EXPECTED_ACCORDING_TO_START_CLAUSE +
                 "MATCH study-[:COLLECTED]->specimen-[:COLLECTED_AT]->location WITH " +
                 "DISTINCT(location) as loc RETURN loc.latitude as latitude, loc.longitude as longitude, loc.footprintWKT as footprintWKT"));
-        assertThat(query.getParams().toString(), is("{accordingTo=(?i).*(\\\\Qsome source\\\\E).*}"));
+        assertThat(query.getParams().toString(), is("{accordingTo=externalId:\\\"some source\\\"}"));
     }
 
     @Test
     public void regexAccordingToGoMexSI() {
-        String regex = CypherQueryBuilder.regexForAccordingTo(Collections.singletonList("http://gomexsi.tamucc.edu"));
-        assertThat(regex, is("(?i)(\\\\Qhttp://gomexsi.tamucc.edu\\\\E|\\\\Qhttp://gomexsi.tamucc.edu.\\\\E)"));
+        String regex = CypherQueryBuilder.matchReferenceOrDataset(Collections.singletonList("http://gomexsi.tamucc.edu"));
+        assertThat(regex, is("externalId:\\\"http://gomexsi.tamucc.edu\\\" externalId:\\\"http://gomexsi.tamucc.edu/\\\""));
 
-        regex = CypherQueryBuilder.regexForAccordingTo(Arrays.<String>asList("http://gomexsi.tamucc.edu", "https://example.com"));
-        assertThat(regex, is("(?i)(\\\\Qhttp://gomexsi.tamucc.edu\\\\E|\\\\Qhttps://example.com\\\\E|\\\\Qhttp://gomexsi.tamucc.edu.\\\\E)"));
+        regex = CypherQueryBuilder.matchReferenceOrDataset(Arrays.<String>asList("http://gomexsi.tamucc.edu", "https://example.com"));
+        assertThat(regex, is("externalId:\\\"http://gomexsi.tamucc.edu\\\" externalId:\\\"https://example.com\\\" externalId:\\\"http://gomexsi.tamucc.edu/\\\""));
 
-        regex = CypherQueryBuilder.regexForAccordingTo(Collections.singletonList("https://example.com"));
-        assertThat(regex, is("(?i)(\\\\Qhttps://example.com\\\\E)"));
+        regex = CypherQueryBuilder.matchReferenceOrDataset(Collections.singletonList("https://example.com"));
+        assertThat(regex, is("externalId:\\\"https://example.com\\\""));
+    }
+
+    @Test
+    public void accordingToiNaturalistShortcut() {
+        List<String> accordingTo = CypherQueryBuilder.collectAccordingTo(new TreeMap() {{
+            put("accordingTo", "inaturalist");
+        }});
+        assertThat(accordingTo, hasItem("globi:globalbioticinteractions/inaturalist"));
     }
 
     @Test(expected = QueryExecutionException.class)

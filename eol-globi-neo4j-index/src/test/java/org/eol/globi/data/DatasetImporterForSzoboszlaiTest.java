@@ -4,6 +4,7 @@ import org.apache.commons.io.IOUtils;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.geo.LatLng;
+import org.eol.globi.process.InteractionListener;
 import org.globalbioticinteractions.dataset.Dataset;
 import org.eol.globi.service.DatasetLocal;
 import org.eol.globi.service.TaxonUtil;
@@ -34,8 +35,8 @@ public class DatasetImporterForSzoboszlaiTest extends GraphDBTestCase {
         localeMap.put(2361, new LatLng(34.00824202376044, -120.72716166720323));
         studyImporterForSzoboszlai.importLinks(IOUtils.toInputStream(firstFewLines(), StandardCharsets.UTF_8), new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) {
-                maps.add(link);
+            public void on(Map<String, String> interaction) {
+                maps.add(interaction);
             }
         }, localeMap);
         assertThat(maps.size(), is(4));
@@ -44,8 +45,8 @@ public class DatasetImporterForSzoboszlaiTest extends GraphDBTestCase {
         assertThat(firstLink.get(TaxonUtil.SOURCE_TAXON_NAME), is("Thunnus thynnus"));
         assertThat(firstLink.get(TaxonUtil.TARGET_TAXON_ID), is("ITIS:161828"));
         assertThat(firstLink.get(TaxonUtil.TARGET_TAXON_NAME), is("Engraulis mordax"));
-        assertThat(firstLink.get(STUDY_SOURCE_CITATION), containsString("Szoboszlai AI, Thayer JA, Wood SA, Sydeman WJ, Koehn LE (2015) Data from: Forage species in predator diets: synthesis of data from the California Current. Dryad Digital Repository. https://doi.org/10.5061/dryad.nv5d2"));
-        assertThat(firstLink.get(STUDY_SOURCE_CITATION), containsString("Accessed at"));
+        assertThat(firstLink.get(DATASET_CITATION), containsString("Szoboszlai AI, Thayer JA, Wood SA, Sydeman WJ, Koehn LE (2015) Data from: Forage species in predator diets: synthesis of data from the California Current. Dryad Digital Repository. https://doi.org/10.5061/dryad.nv5d2"));
+        assertThat(firstLink.get(DATASET_CITATION), containsString("Accessed at"));
         assertThat(firstLink.get(REFERENCE_CITATION), is("Blunt, CE. 1958. California bluefin tuna-wary wanderer of the Pacific. Outdoor California. v.19. pp.14"));
         assertThat(firstLink.get(REFERENCE_DOI), is(nullValue()));
         assertThat(firstLink.get(REFERENCE_URL), is(nullValue()));

@@ -1,8 +1,8 @@
 package org.eol.globi.util;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.http.client.utils.URIBuilder;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -53,7 +53,10 @@ public class ExternalIdUtil {
         put(TaxonomyProvider.GEONAMES.getIdPrefix(), "http://www.geonames.org/");
         put(TaxonomyProvider.MSW.getIdPrefix(), "http://www.departments.bucknell.edu/biology/resources/msw3/browse.asp?s=y&id=");
         put(TaxonomyProvider.PLAZI.getIdPrefix(), "http://treatment.plazi.org/id/");
+        put(TaxonomyProvider.PLAZI_TAXON_CONCEPT.getIdPrefix(), "http://taxon-concept.plazi.org/id/");
         put(TaxonomyProvider.OPEN_BIODIV.getIdPrefix(), "http://openbiodiv.net/");
+        put(TaxonomyProvider.BOLD_BIN.getIdPrefix(), "http://bins.boldsystems.org/index.php/Public_BarcodeCluster?clusteruri=BOLD:");
+        put(TaxonomyProvider.BOLD_TAXON.getIdPrefix(), "http://www.boldsystems.org/index.php/Taxbrowser_Taxonpage?taxid=");
     }};
 
     private static final Map<String, String> URL_TO_PREFIX_MAP = new HashMap<String, String>() {{
@@ -63,7 +66,7 @@ public class ExternalIdUtil {
 
     }};
 
-    private static final Log LOG = LogFactory.getLog(ExternalIdUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ExternalIdUtil.class);
 
     private static final Pattern LIKELY_ID_PATTERN = Pattern.compile(".*[:-].*");
 

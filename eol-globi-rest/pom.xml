@@ -5,7 +5,7 @@
     <parent>
         <artifactId>eol-globi-parent</artifactId>
         <groupId>org.eol</groupId>
-        <version>0.6-SNAPSHOT</version>
+        <version>0.21.3-SNAPSHOT</version>
         <relativePath>../eol-globi-parent/pom.xml</relativePath>
     </parent>
 
@@ -15,11 +15,10 @@
     <name>Global Biotic Interactions Rest Services</name>
 
     <properties>
-        <spring.version>3.2.13.RELEASE</spring.version>
+        <spring.version>3.2.18.RELEASE</spring.version>
         <aspectj.version>1.6.11</aspectj.version>
         <jetty.groupId>org.eclipse.jetty</jetty.groupId>
-        <jetty.version>9.2.3.v20140905</jetty.version>
-        <slf4j.version>1.6.1</slf4j.version>
+        <jetty.version>9.4.35.v20201120</jetty.version>
         <javax.validation.version>1.1.0.Final</javax.validation.version>
         <javassist.version>3.9.0.GA</javassist.version>
     </properties>
@@ -32,19 +31,9 @@
         </dependency>
 
         <dependency>
-            <groupId>org.hibernate</groupId>
+            <groupId>org.hibernate.validator</groupId>
             <artifactId>hibernate-validator</artifactId>
-            <version>4.1.0.Final</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>javax.xml.bind</groupId>
-                    <artifactId>jaxb-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>6.2.0.Final</version>
         </dependency>
 
         <dependency>
@@ -58,6 +47,12 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-aop</artifactId>
             <version>${spring.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
@@ -86,16 +81,6 @@
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>jcl-over-slf4j</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
             <artifactId>slf4j-log4j12</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
@@ -118,6 +103,12 @@
             <groupId>commons-validator</groupId>
             <artifactId>commons-validator</artifactId>
             <version>1.4.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>javax.transaction</groupId>
@@ -182,6 +173,12 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>eol-globi-neo4j-index</artifactId>
             <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish</groupId>
+            <artifactId>jakarta.el</artifactId>
+            <version>3.0.3</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

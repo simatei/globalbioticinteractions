@@ -4,13 +4,10 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.eol.globi.domain.InteractType;
 import org.eol.globi.domain.Taxon;
 import org.eol.globi.domain.TaxonImpl;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.TaxonUtil;
-import org.eol.globi.service.TermLookupServiceException;
-import org.eol.globi.util.InteractTypeMapper;
-import org.eol.globi.util.InteractTypeMapperFactoryImpl;
 import org.eol.globi.util.JSONUtil;
 
 import java.io.IOException;
@@ -34,14 +31,6 @@ public class DatasetImporterForBatBase extends DatasetImporterWithListener {
     @Override
     public void importStudy() throws StudyImporterException {
 
-        InteractTypeMapper interactTypeMapper;
-        try {
-            interactTypeMapper = new InteractTypeMapperFactoryImpl(getDataset()).create();
-        } catch (TermLookupServiceException e) {
-            throw new StudyImporterException("failed to create interaction type mapper", e);
-        }
-
-
         Map<String, String> sources;
         String baseUrl = getDataset().getOrDefault("url", getBaseURL());
         try {
@@ -63,30 +52,10 @@ public class DatasetImporterForBatBase extends DatasetImporterWithListener {
             throw new StudyImporterException("failed to access locations", e);
         }
 
-
-        InteractionListener interactionListener = new InteractionListener() {
-
-            @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                String interactionTypeId = link.get(DatasetImporterForTSV.INTERACTION_TYPE_ID);
-                if (!interactTypeMapper.shouldIgnoreInteractionType(interactionTypeId)) {
-                    InteractType interactType = interactTypeMapper.getInteractType(interactionTypeId);
-                    if (interactType == null) {
-                        getLogger().warn(LogUtil.contextFor(link), "missing interaction type mapping for [" + interactionTypeId + "] and [" + link.get(DatasetImporterForTSV.INTERACTION_TYPE_NAME) + "]");
-                    } else {
-                        getInteractionListener().newLink(new TreeMap<String, String>(link) {{
-                            put(DatasetImporterForTSV.INTERACTION_TYPE_ID, interactType.getIRI());
-                            put(DatasetImporterForTSV.INTERACTION_TYPE_NAME, interactType.getLabel());
-                        }});
-                    }
-                }
-            }
-        };
-
         try {
             parseInteractions(taxa,
                     sources,
-                    interactionListener,
+                    getInteractionListener(),
                     getDataset().retrieve(URI.create(baseUrl + "fetch/interaction")),
                     locations, getPrefixer());
         } catch (IOException e) {
@@ -296,7 +265,7 @@ public class DatasetImporterForBatBase extends DatasetImporterWithListener {
                                     }
                                 }
 
-                                testListener.newLink(interactionRecord);
+                                testListener.on(interactionRecord);
                             }
 
                         }
@@ -326,9 +295,28 @@ public class DatasetImporterForBatBase extends DatasetImporterWithListener {
         return taxonId;
     }
 
-    private static String appendToRanks(JsonNode taxonNode, List<String> ranks) {
-        String rankName = taxonNode.get("level").get("displayName").asText();
+    private static void appendToRanks(JsonNode taxonNode, List<String> ranks) throws IOException {
+        String rankName = getRankNameValueForLabel(taxonNode, "rank");
+
+        // try older rank label see https://github.com/globalbioticinteractions/globalbioticinteractions/issues/576
+        if (StringUtils.isBlank(rankName)) {
+            rankName = getRankNameValueForLabel(taxonNode, "level");
+        }
+        if (StringUtils.isBlank(rankName)) {
+            throw new IOException("missing rank name in: " + taxonNode.toString() + "]");
+        }
+
         ranks.add(StringUtils.lowerCase(rankName));
+    }
+
+    private static String getRankNameValueForLabel(JsonNode taxonNode, String taxonRankLabel) {
+        String rankName = null;
+        if (taxonNode.has(taxonRankLabel)) {
+            JsonNode level = taxonNode.get(taxonRankLabel);
+            if (level.has("displayName")) {
+                rankName = level.get("displayName").asText();
+            }
+        }
         return rankName;
     }
 

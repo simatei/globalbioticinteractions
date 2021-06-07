@@ -48,7 +48,14 @@ public enum ResultObject {
             put(ResultField.SOURCE_SPECIMEN_BASIS_OF_RECORD, SOURCE_SPECIMEN);
             put(ResultField.SOURCE_SPECIMEN_BODY_PART, SOURCE_SPECIMEN);
             put(ResultField.SOURCE_SPECIMEN_BODY_PART_ID, SOURCE_SPECIMEN);
+
             put(ResultField.SOURCE_SPECIMEN_ID, SOURCE_SPECIMEN);
+
+            put(ResultField.SOURCE_SPECIMEN_OCCURRENCE_ID, SOURCE_SPECIMEN);
+            put(ResultField.SOURCE_SPECIMEN_INSTITUTION_CODE, SOURCE_SPECIMEN);
+            put(ResultField.SOURCE_SPECIMEN_COLLECTION_CODE, SOURCE_SPECIMEN);
+            put(ResultField.SOURCE_SPECIMEN_CATALOG_NUMBER, SOURCE_SPECIMEN);
+
             put(ResultField.SOURCE_SPECIMEN_LIFE_STAGE, SOURCE_SPECIMEN);
             put(ResultField.SOURCE_SPECIMEN_LIFE_STAGE_ID, SOURCE_SPECIMEN);
             put(ResultField.SOURCE_SPECIMEN_PHYSIOLOGICAL_STATE, SOURCE_SPECIMEN);
@@ -67,6 +74,12 @@ public enum ResultObject {
             put(ResultField.TARGET_SPECIMEN_BODY_PART, TARGET_SPECIMEN);
             put(ResultField.TARGET_SPECIMEN_BODY_PART_ID, TARGET_SPECIMEN);
             put(ResultField.TARGET_SPECIMEN_ID, TARGET_SPECIMEN);
+
+            put(ResultField.TARGET_SPECIMEN_OCCURRENCE_ID, TARGET_SPECIMEN);
+            put(ResultField.TARGET_SPECIMEN_INSTITUTION_CODE, TARGET_SPECIMEN);
+            put(ResultField.TARGET_SPECIMEN_COLLECTION_CODE, TARGET_SPECIMEN);
+            put(ResultField.TARGET_SPECIMEN_CATALOG_NUMBER, TARGET_SPECIMEN);
+
             put(ResultField.TARGET_SPECIMEN_LIFE_STAGE, TARGET_SPECIMEN);
             put(ResultField.TARGET_SPECIMEN_LIFE_STAGE_ID, TARGET_SPECIMEN);
             put(ResultField.TARGET_SPECIMEN_PHYSIOLOGICAL_STATE, TARGET_SPECIMEN);
@@ -84,7 +97,6 @@ public enum ResultObject {
             put(ResultField.STUDY_CITATION, STUDY);
             put(ResultField.STUDY_DOI, STUDY);
             put(ResultField.STUDY_SOURCE_CITATION, STUDY);
-            put(ResultField.STUDY_SOURCE_ID, STUDY);
             put(ResultField.STUDY_TITLE, STUDY);
             put(ResultField.STUDY_URL, STUDY);
 
@@ -92,6 +104,7 @@ public enum ResultObject {
             put(ResultField.STUDY_SOURCE_FORMAT, DATASET);
             put(ResultField.STUDY_SOURCE_ARCHIVE_URI, DATASET);
             put(ResultField.STUDY_SOURCE_LAST_SEEN_AT, DATASET);
+            put(ResultField.STUDY_SOURCE_ID, DATASET);
 
             put(ResultField.COLLECTION_TIME_IN_UNIX_EPOCH, COLLECTED_REL);
             put(ResultField.INTERACTION_TYPE, INTERACTION);

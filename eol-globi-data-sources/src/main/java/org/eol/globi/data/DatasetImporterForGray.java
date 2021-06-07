@@ -2,6 +2,7 @@ package org.eol.globi.data;
 
 import com.Ostermiller.util.LabeledCSVParser;
 import org.apache.commons.lang3.StringUtils;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.TaxonUtil;
 import org.eol.globi.util.CSVTSVUtil;
 
@@ -33,7 +34,7 @@ public class DatasetImporterForGray extends DatasetImporterWithListener {
         while ((filter == null || filter.shouldImportRecord((long) parser.lastLineNumber())) && parser.getLine() != null) {
             Map<String, String> e = importLink(parser);
             if (e != null) {
-                interactionListener.newLink(e);
+                interactionListener.on(e);
             }
         }
     }
@@ -45,7 +46,7 @@ public class DatasetImporterForGray extends DatasetImporterWithListener {
         link.put(DatasetImporterForTSV.SOURCE_LIFE_STAGE_NAME, nonNAValueOrNull(parser.getValueByLabel("consumer.lifestage")));
         link.put(TaxonUtil.TARGET_TAXON_NAME, parser.getValueByLabel("resource"));
         link.put(DatasetImporterForTSV.TARGET_LIFE_STAGE_NAME, nonNAValueOrNull(parser.getValueByLabel("resource.lifestage")));
-        link.put(DatasetImporterForTSV.STUDY_SOURCE_CITATION, getSourceCitationLastAccessed());
+        link.put(DatasetImporterForTSV.DATASET_CITATION, getSourceCitationLastAccessed());
         link.put(DatasetImporterForTSV.REFERENCE_CITATION, parser.getValueByLabel("full.source"));
         link.put(DatasetImporterForTSV.REFERENCE_ID, getSourceDOI() + "/source.id/" + parser.getValueByLabel("source.id"));
         link.put(DatasetImporterForTSV.BASIS_OF_RECORD_NAME, parser.getValueByLabel("link.evidence"));

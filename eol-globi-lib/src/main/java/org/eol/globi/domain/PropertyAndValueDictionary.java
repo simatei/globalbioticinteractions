@@ -4,6 +4,7 @@ import java.net.URI;
 
 public class PropertyAndValueDictionary {
     public static final String NO_MATCH = "no:match";
+    public static final String AMBIGUOUS_MATCH = "ambiguous:match";
     public static final String NAME = "name";
     public static final String EXTERNAL_ID = "externalId";
     public static final String PATH = "path";
@@ -17,11 +18,14 @@ public class PropertyAndValueDictionary {
     public static final String STATUS_ID = "statusId";
     public static final String STATUS_LABEL = "statusLabel";
     public static final String DCTERMS_BIBLIOGRAPHIC_CITATION = "dcterms:bibliographicCitation";
+    public static final String DCTERMS_BIBLIOGRAPHIC_CITATION_IRI = "http://purl.org/dc/terms/bibliographicCitation";
     public static final String OCCURRENCE_ID = "occurrenceId";
     public static final String CATALOG_NUMBER = "catalogNumber";
     public static final String COLLECTION_CODE = "collectionCode";
     public static final String COLLECTION_ID = "collectionId";
     public static final String INSTITUTION_CODE = "institutionCode";
+    public static final String NETWORK_ID = "networkId";
+    public static final String NETWORK_NAME = "networkName";
     public static final String MIME_TYPE_DWCA = "application/dwca";
     protected final static String TYPE = "type";
     public static final String RANK = "rank";

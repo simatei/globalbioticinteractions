@@ -1,10 +1,6 @@
 package org.eol.globi.server;
 
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.domain.PropertyAndValueDictionary;
@@ -12,6 +8,8 @@ import org.eol.globi.server.util.ResultField;
 import org.eol.globi.util.CypherQuery;
 import org.eol.globi.util.CypherUtil;
 import org.eol.globi.util.ExternalIdUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +19,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -39,7 +38,7 @@ import static org.eol.globi.server.util.ResultField.TAXON_PATH_RANKS;
 
 @Controller
 public class TaxonSearchImpl implements TaxonSearch {
-    private static final Log LOG = LogFactory.getLog(TaxonSearchImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TaxonSearchImpl.class);
 
     public static final Map<String, String> NO_PROPERTIES = Collections.emptyMap();
 
@@ -171,9 +170,20 @@ public class TaxonSearchImpl implements TaxonSearch {
                         CypherUtil.CYPHER_VERSION_2_3), 30);
     }
 
-    @RequestMapping(value = "/taxonLinks/{taxonPath}", method = RequestMethod.GET, produces = "application/json;charset=UTF-8")
+    @RequestMapping(value = "/taxonLinks/**", method = RequestMethod.GET, produces = "application/json;charset=UTF-8")
     @ResponseBody
-    public Collection<String> taxonLinks(@PathVariable("taxonPath") final String taxonPath, HttpServletRequest request) throws IOException {
+    public Collection<String> taxonLinks2(HttpServletRequest request) throws IOException {
+        String path = getEscapedPathFromRequest(request);
+        String taxonPath = StringUtils.replacePattern(path, "^/taxonLinks/", "");
+        return taxonLinks(taxonPath, request);
+    }
+
+    public static String getEscapedPathFromRequest(HttpServletRequest request) {
+        URI uri = URI.create("http://localhost" + request.getRequestURI());
+        return uri.getPath();
+    }
+
+    public Collection<String> taxonLinks(String taxonPath, HttpServletRequest request) throws IOException {
         return TaxonSearchUtil.linksForTaxonName(taxonPath, request, new TaxonSearchUtil.LinkMapper() {
 
             @Override

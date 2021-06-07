@@ -1,6 +1,9 @@
 package org.eol.globi.data;
 
 import org.eol.globi.domain.LogContext;
+import org.eol.globi.process.InteractionListener;
+import org.eol.globi.process.InteractionListenerImpl;
+import org.eol.globi.process.InteractionValidator;
 import org.eol.globi.service.DatasetLocal;
 import org.eol.globi.tool.NullImportLogger;
 import org.hamcrest.core.Is;
@@ -19,20 +22,18 @@ public class DatasetImporterForMangalIT {
         AtomicInteger counter = new AtomicInteger(0);
         DatasetImporterForMangal importer = new DatasetImporterForMangal(null, null);
         importer.setDataset(new DatasetLocal(inStream -> inStream));
-        importer.setInteractionListener(new InteractionListener() {
+        importer.setInteractionListener(new InteractionValidator(new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-
-                InteractionListenerImpl.validLink(link, new NullImportLogger() {
-                    @Override
-                    public void warn(LogContext ctx, String message) {
-                        fail(message + "for [" + link + "]");
-                    }
-
-                });
+            public void on(Map<String, String> interaction) throws StudyImporterException {
                 counter.incrementAndGet();
             }
-        });
+        }, new NullImportLogger() {
+            @Override
+            public void warn(LogContext ctx, String message) {
+                fail("unexpected warning: [" + message + "]");
+            }
+
+        }));
 
         importer.importStudy();
 

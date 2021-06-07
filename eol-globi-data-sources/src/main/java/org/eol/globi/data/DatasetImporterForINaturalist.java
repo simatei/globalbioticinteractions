@@ -1,8 +1,8 @@
 package org.eol.globi.data;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.eol.globi.domain.InteractType;
@@ -34,7 +34,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 public class DatasetImporterForINaturalist extends NodeBasedImporter {
-    private static final Log LOG = LogFactory.getLog(DatasetImporterForINaturalist.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DatasetImporterForINaturalist.class);
 
     public static final String INATURALIST_URL = "https://www.inaturalist.org";
 
@@ -82,11 +82,6 @@ public class DatasetImporterForINaturalist extends NodeBasedImporter {
             String msg = "found unsupported iNaturalist taxon fields: " + unsupportedInteractions.toString();
             throw new StudyImporterException(msg);
         }
-    }
-
-    protected String getSourceString() {
-        String description = "http://iNaturalist.org is a place where you can record what you see in nature, meet other nature lovers, and learn about the natural world. ";
-        return description + CitationUtil.createLastAccessedString(INATURALIST_URL);
     }
 
     private void retrieveDataParseResults() throws StudyImporterException {

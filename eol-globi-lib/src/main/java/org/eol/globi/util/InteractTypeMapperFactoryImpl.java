@@ -9,6 +9,7 @@ import org.eol.globi.domain.Term;
 import org.eol.globi.domain.TermImpl;
 import org.eol.globi.service.ResourceService;
 import org.eol.globi.service.TermLookupService;
+import org.eol.globi.service.TermLookupServiceConfigurationException;
 import org.eol.globi.service.TermLookupServiceException;
 
 import java.io.IOException;
@@ -20,7 +21,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class InteractTypeMapperFactoryImpl implements InteractTypeMapperFactory {
 
@@ -29,21 +29,21 @@ public class InteractTypeMapperFactoryImpl implements InteractTypeMapperFactory 
     private final ResourceService resourceService;
 
     public InteractTypeMapperFactoryImpl() {
-        this(getResourceServiceForDefaultInteractionTypeMapping());
+        this(getResourceServiceForDefaultInteractionTypeMapping(new ResourceServiceLocal()));
     }
 
     public InteractTypeMapperFactoryImpl(ResourceService resourceService) {
         this.resourceService = resourceService;
     }
 
-    private static ResourceService getResourceServiceForDefaultInteractionTypeMapping() {
+    public static ResourceService getResourceServiceForDefaultInteractionTypeMapping(ResourceService service) {
         return new ResourceService() {
             @Override
             public InputStream retrieve(URI resourceName) throws IOException {
                 URI supportedURI = getSupportedURI(resourceName);
-                return supportedURI == null
+                return supportedURI == null || service == null
                         ? null
-                        : ResourceUtil.asInputStream(supportedURI.toString());
+                        : service.retrieve(supportedURI);
             }
 
             URI getSupportedURI(URI resourceName) {
@@ -60,21 +60,18 @@ public class InteractTypeMapperFactoryImpl implements InteractTypeMapperFactory 
                 ignoredInteractionTypeColumnName,
                 ignoredTypeListURI);
 
-        return new TermLookupService() {
-            @Override
-            public List<Term> lookupTermByName(String name) throws TermLookupServiceException {
-                final String nameNorm = InteractUtil.normalizeInteractionNameOrId(name);
-                return StringUtils.isNotBlank(nameNorm) && typesIgnored.contains(nameNorm)
-                        ? Collections.singletonList(new TermImpl(name, name))
-                        : Collections.emptyList();
-            }
+        return name -> {
+            final String nameNorm = InteractUtil.normalizeInteractionNameOrId(name);
+            return StringUtils.isNotBlank(nameNorm) && typesIgnored.contains(nameNorm)
+                    ? Collections.singletonList(new TermImpl(name, name))
+                    : Collections.emptyList();
         };
     }
 
     @Override
     public InteractTypeMapper create() throws TermLookupServiceException {
         final InteractTypeMapper mapperCustom = mapperForResourceService(resourceService);
-        final InteractTypeMapper mapperDefault = mapperForResourceService(getResourceServiceForDefaultInteractionTypeMapping());
+        final InteractTypeMapper mapperDefault = mapperForResourceService(getResourceServiceForDefaultInteractionTypeMapping(new ResourceServiceLocal()));
         final InteractTypeMapper mapperRO = new InteractTypeMapperFactoryForRO().create();
         return new InteractTypeMapperWithFallbackImpl(
                 mapperCustom,
@@ -122,11 +119,11 @@ public class InteractTypeMapperFactoryImpl implements InteractTypeMapperFactory 
             String interactionTypeId = InteractUtil.normalizeInteractionNameOrId(labeledCSVParser.getValueByLabel(mappedInteractionTypeIdColumnName));
             InteractType interactType = InteractType.typeOf(interactionTypeId);
             if (interactType == null) {
-                throw new TermLookupServiceException("failed to map interaction type to [" + interactionTypeId + "] on line [" + labeledCSVParser.lastLineNumber() + "]: interaction type unknown to GloBI");
+                throw new TermLookupServiceConfigurationException("failed to map interaction type to [" + interactionTypeId + "] on line [" + labeledCSVParser.lastLineNumber() + "]: interaction type unknown to GloBI");
             } else {
                 if (StringUtils.isBlank(providedInteractionId) && StringUtils.isBlank(providedInteractionName)) {
                     if (typeMap.containsKey("")) {
-                        throw new TermLookupServiceException("only one default/blank interaction type can be defined, but found duplicate on line [" + labeledCSVParser.lastLineNumber() + "]: [" + StringUtils.join(labeledCSVParser.getLine(), "|") + "]");
+                        throw new TermLookupServiceConfigurationException("only one default/blank interaction type can be defined, but found duplicate on line [" + labeledCSVParser.lastLineNumber() + "]: [" + StringUtils.join(labeledCSVParser.getLine(), "|") + "]");
                     }
                     typeMap.put("", interactType);
                 } else {
@@ -144,26 +141,30 @@ public class InteractTypeMapperFactoryImpl implements InteractTypeMapperFactory 
     }
 
     private static void setOrThrow(Map<String, InteractType> typeMap, String providedInteractionId, String providedInteractionName, InteractType interactType) throws TermLookupServiceException {
-        InteractType interactType1 = typeMap.get(providedInteractionName);
-        if (interactType1 == null) {
+        InteractType mappedInteractionType = typeMap.get(providedInteractionName);
+        if (mappedInteractionType == null) {
             typeMap.put(providedInteractionName, interactType);
         } else {
             if (StringUtils.isBlank(providedInteractionId)) {
-                throw new TermLookupServiceException("provided name [" + providedInteractionName + "] already mapped: please provide unique interaction type name/id");
+                throwAmbiguousMappingException(providedInteractionName, "name");
             }
         }
     }
 
+    private static void throwAmbiguousMappingException(String providedValue, String providedKey) throws TermLookupServiceConfigurationException {
+        throw new TermLookupServiceConfigurationException("multiple mappings for [" + providedKey + "]: [" + providedValue + "] were found, but only one unambiguous mapping is allowed");
+    }
+
     private static void setOrThrow(Map<String, InteractType> typeMap, String providedInteractionId, InteractType interactType) throws TermLookupServiceException {
         if (typeMap.containsKey(providedInteractionId)) {
-            throw new TermLookupServiceException("provided id [" + providedInteractionId + "] already mapped");
+            throwAmbiguousMappingException(providedInteractionId, "id");
         }
         typeMap.put(providedInteractionId, interactType);
     }
 
     private static void assertColumnNamePresent(List<String> columnNames, String columnNameToCheck) throws TermLookupServiceException {
         if (!columnNames.contains(columnNameToCheck)) {
-            throw new TermLookupServiceException("missing column [" + columnNameToCheck + "] in mapping file");
+            throw new TermLookupServiceConfigurationException("missing column [" + columnNameToCheck + "] in mapping file");
         }
     }
 
@@ -245,21 +246,18 @@ public class InteractTypeMapperFactoryImpl implements InteractTypeMapperFactory 
 
     public static TermLookupService getTermLookupService
             (List<String> typesIgnored, Map<String, InteractType> typeMap) {
-        return new TermLookupService() {
-            @Override
-            public List<Term> lookupTermByName(String name) throws TermLookupServiceException {
-                List<Term> matchingTerms = Collections.emptyList();
-                String nameNormalized = InteractUtil.normalizeInteractionNameOrId(name);
-                if (!typesIgnored.contains(nameNormalized)) {
-                    final InteractType interactType = typeMap.get(nameNormalized);
-                    if (interactType != null) {
-                        matchingTerms = new ArrayList<Term>() {{
-                            add(new TermImpl(interactType.getIRI(), interactType.getLabel()));
-                        }};
-                    }
+        return name -> {
+            List<Term> matchingTerms = Collections.emptyList();
+            String nameNormalized = InteractUtil.normalizeInteractionNameOrId(name);
+            if (!typesIgnored.contains(nameNormalized)) {
+                final InteractType interactType = typeMap.get(nameNormalized);
+                if (interactType != null) {
+                    matchingTerms = new ArrayList<Term>() {{
+                        add(new TermImpl(interactType.getIRI(), interactType.getLabel()));
+                    }};
                 }
-                return matchingTerms;
             }
+            return matchingTerms;
         };
     }
 

@@ -1,13 +1,12 @@
 package org.eol.globi.util;
 
-import org.eol.globi.domain.Taxon;
 import org.eol.globi.domain.TaxonomyProvider;
 import org.junit.Test;
 
-import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.assertFalse;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsNull.nullValue;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ExternalIdUtilTest {
@@ -39,6 +38,10 @@ public class ExternalIdUtilTest {
         assertThat(ExternalIdUtil.urlForExternalId("BioGoMx:Spp-23-0494"), is("http://gulfbase.org/biogomx/biospecies.php?species=Spp-23-0494"));
         assertThat(ExternalIdUtil.urlForExternalId("EOL_V2:1234"), is("https://doi.org/10.5281/zenodo.1495266#1234"));
         assertThat(ExternalIdUtil.urlForExternalId("PLAZI:99915444-EC70-3196-7F2D-637F418F0730"), is("http://treatment.plazi.org/id/99915444-EC70-3196-7F2D-637F418F0730"));
+        assertThat(ExternalIdUtil.urlForExternalId("http://taxon-concept.plazi.org/id/Animalia/Caridae_Dana_1852"), is("http://taxon-concept.plazi.org/id/Animalia/Caridae_Dana_1852"));
+        assertThat(ExternalIdUtil.urlForExternalId("PLAZITaxon:Animalia/Caridae_Dana_1852"), is("http://taxon-concept.plazi.org/id/Animalia/Caridae_Dana_1852"));
+        assertThat(ExternalIdUtil.urlForExternalId("BOLDTaxon:762659"), is("http://www.boldsystems.org/index.php/Taxbrowser_Taxonpage?taxid=762659"));
+        assertThat(ExternalIdUtil.urlForExternalId("BOLD:ACM3285"), is("http://bins.boldsystems.org/index.php/Public_BarcodeCluster?clusteruri=BOLD:ACM3285"));
     }
 
     @Test
@@ -61,6 +64,22 @@ public class ExternalIdUtilTest {
         assertThat(
                 ExternalIdUtil.taxonomyProviderFor("https://www.itis.gov/servlet/SingleRpt/SingleRpt?search_topic=TSN&search_value=535920"),
                 is(TaxonomyProvider.ITIS)
+        );
+    }
+
+    @Test
+    public void plaziTaxonConcept() {
+        assertThat(
+                ExternalIdUtil.taxonomyProviderFor("http://taxon-concept.plazi.org/id/Animalia/Caridae_Dana_1852"),
+                is(TaxonomyProvider.PLAZI_TAXON_CONCEPT)
+        );
+    }
+
+    @Test
+    public void plaziTaxonTreatments() {
+        assertThat(
+                ExternalIdUtil.taxonomyProviderFor("http://treatment.plazi.org/id/EA4F8781FFD5FFB3FF0C7606E774FCB3"),
+                is(TaxonomyProvider.PLAZI)
         );
     }
 
@@ -148,6 +167,11 @@ public class ExternalIdUtilTest {
     @Test
     public void isUnsupportedId() {
         assertThat(ExternalIdUtil.isSupported("urn:catalog:AMNH:Mammals:M-39582"), is(false));
+    }
+
+    @Test
+    public void httpIsSupportedId() {
+        assertThat(ExternalIdUtil.urlForExternalId("this is not an url"), is(nullValue()));
     }
 
     @Test

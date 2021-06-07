@@ -5,7 +5,7 @@
     <parent>
         <artifactId>eol-globi-parent</artifactId>
         <groupId>org.eol</groupId>
-        <version>0.6-SNAPSHOT</version>
+        <version>0.21.3-SNAPSHOT</version>
         <relativePath>../eol-globi-parent/pom.xml</relativePath>
     </parent>
 
@@ -17,6 +17,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>eol-globi-taxon-resolver</artifactId>

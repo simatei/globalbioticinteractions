@@ -5,6 +5,7 @@ import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ObjectNode;
 import org.eol.globi.domain.InteractType;
+import org.eol.globi.process.InteractionListener;
 import org.eol.globi.service.TermLookupServiceException;
 import org.eol.globi.util.InteractTypeMapper;
 import org.eol.globi.util.InteractTypeMapperFactoryImpl;
@@ -48,8 +49,8 @@ public class DatasetImporterForPensoftIT {
         importer.setDataset(dataset);
         importer.setInteractionListener(new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                links.add(link);
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                links.add(interaction);
             }
         });
         importer.importStudy();
@@ -130,8 +131,8 @@ public class DatasetImporterForPensoftIT {
         List<Map<String, String>> rowValues = new ArrayList<>();
         InteractionListener listener = new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                rowValues.add(link);
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                rowValues.add(interaction);
             }
         };
 
@@ -147,8 +148,8 @@ public class DatasetImporterForPensoftIT {
         List<Map<String, String>> rowValues = new ArrayList<>();
         InteractionListener listener = new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                rowValues.add(new TreeMap<>(link));
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                rowValues.add(new TreeMap<>(interaction));
             }
         };
 
@@ -178,8 +179,8 @@ public class DatasetImporterForPensoftIT {
         List<Map<String, String>> rowValues = new ArrayList<>();
         InteractionListener listener = new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                rowValues.add(new TreeMap<>(link));
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                rowValues.add(new TreeMap<>(interaction));
             }
         };
 
@@ -215,8 +216,8 @@ public class DatasetImporterForPensoftIT {
         List<Map<String, String>> rowValues = new ArrayList<>();
         InteractionListener listener = new InteractionListener() {
             @Override
-            public void newLink(Map<String, String> link) throws StudyImporterException {
-                rowValues.add(new TreeMap<>(link));
+            public void on(Map<String, String> interaction) throws StudyImporterException {
+                rowValues.add(new TreeMap<>(interaction));
             }
         };
 
